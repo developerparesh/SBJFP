@@ -145,9 +145,27 @@ function SignUpForm() {
 
       {/* Error Alert */}
       {errorMsg && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2.5" role="alert">
-          <span className="text-base" aria-hidden="true">⚠️</span>
-          <p className="flex-1 font-medium">{errorMsg}</p>
+        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex flex-col gap-2" role="alert">
+          <div className="flex items-start gap-2.5">
+            <span className="text-base" aria-hidden="true">⚠️</span>
+            <p className="flex-1 font-semibold">{errorMsg}</p>
+          </div>
+          {errorMsg.toLowerCase().includes("rate limit") && (
+            <div className="mt-2 p-3 bg-white/80 rounded-lg border border-red-200 text-xs text-slate-700 space-y-1.5">
+              <p className="font-bold text-red-800">Why this happens & how to fix it immediately:</p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-600">
+                <li>
+                  Supabase&apos;s free built-in email service limits outgoing emails to <strong>3-4 per hour</strong>.
+                </li>
+                <li>
+                  <strong>Recommended Quick Fix:</strong> In your <strong>Supabase Dashboard ➔ Authentication ➔ Providers ➔ Email</strong>, toggle <strong>OFF &quot;Confirm email&quot;</strong> and save. Users will then register and log in instantly without email limits.
+                </li>
+                <li>
+                  <strong>Alternative:</strong> Use the <strong>&quot;Continue with Google&quot;</strong> button below to sign in immediately without email limits.
+                </li>
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

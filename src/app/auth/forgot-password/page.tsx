@@ -62,9 +62,16 @@ export default function ForgotPasswordPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 shadow-sm border border-slate-200/80 rounded-2xl sm:px-10">
           {errorMsg && (
-            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2.5" role="alert">
-              <span className="text-base" aria-hidden="true">⚠️</span>
-              <p className="flex-1 font-medium">{errorMsg}</p>
+            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex flex-col gap-2" role="alert">
+              <div className="flex items-start gap-2.5">
+                <span className="text-base" aria-hidden="true">⚠️</span>
+                <p className="flex-1 font-semibold">{errorMsg}</p>
+              </div>
+              {errorMsg.toLowerCase().includes("rate limit") && (
+                <p className="text-xs text-slate-600 mt-1 pl-6">
+                  Supabase limits outgoing emails to 3-4/hour on the free built-in SMTP. Please wait a few minutes or configure a custom SMTP provider (Resend, SendGrid) in your Supabase dashboard.
+                </p>
+              )}
             </div>
           )}
 
