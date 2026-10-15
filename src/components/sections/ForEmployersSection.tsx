@@ -54,8 +54,8 @@ export default function ForEmployersSection() {
               Define exactly what your roles require. Let structured matching surface candidates who genuinely fit — so you spend less time sifting and more time hiring.
             </p>
             <Link
-              href="#final-cta"
-              className="inline-flex items-center justify-center px-7 py-3.5 text-base font-bold rounded-xl text-white transition-all hover:opacity-90"
+              href="/auth/signup?role=employer"
+              className="inline-flex items-center justify-center px-7 py-3.5 text-base font-bold rounded-xl text-white transition-all hover:opacity-90 shadow-sm"
               style={{ backgroundColor: "var(--navy)" }}
             >
               Discover Better-Matched Talent

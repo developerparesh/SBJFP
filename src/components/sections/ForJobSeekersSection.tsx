@@ -38,8 +38,8 @@ export default function ForJobSeekersSection() {
               Stop tailoring your resume for every keyword. SBJFP is designed to surface your skills and match them to relevant opportunities — transparently.
             </p>
             <Link
-              href="#final-cta"
-              className="inline-flex items-center justify-center px-7 py-3.5 text-base font-bold rounded-xl text-white transition-all hover:opacity-90"
+              href="/auth/signup?role=candidate"
+              className="inline-flex items-center justify-center px-7 py-3.5 text-base font-bold rounded-xl text-white transition-all hover:opacity-90 shadow-sm"
               style={{ backgroundColor: "var(--blue)" }}
             >
               Explore Your Opportunities

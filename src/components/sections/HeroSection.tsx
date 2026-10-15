@@ -83,21 +83,19 @@ function JobMatchPreview() {
 
       {/* Actions */}
       <div className="flex gap-2">
-        <button
-          className="flex-1 text-xs font-semibold py-2 px-3 rounded-lg text-white transition-colors cursor-default"
+        <Link
+          href="/auth/signup?role=candidate"
+          className="flex-1 text-xs font-bold py-2.5 px-3 rounded-lg text-white text-center transition-all hover:opacity-90 shadow-sm"
           style={{ backgroundColor: "var(--blue)" }}
-          tabIndex={-1}
-          aria-hidden="true"
         >
-          Apply Now
-        </button>
-        <button
-          className="text-xs font-medium py-2 px-3 rounded-lg border border-slate-200 text-slate-500 transition-colors cursor-default"
-          tabIndex={-1}
-          aria-hidden="true"
+          Apply Now (1-Click)
+        </Link>
+        <Link
+          href="/auth/signup?role=candidate"
+          className="text-xs font-semibold py-2.5 px-3 rounded-lg border border-slate-200 text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors"
         >
-          Save
-        </button>
+          Try Match
+        </Link>
       </div>
 
       <p className="text-[10px] text-slate-300 text-center mt-3">
