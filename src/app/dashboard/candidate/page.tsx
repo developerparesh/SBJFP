@@ -9,11 +9,18 @@ import {
   PRESET_SKILLS,
   SKILL_CATEGORIES,
   QUICK_PRESETS,
+  QUALIFICATION_OPTIONS,
   CandidateSkillState,
 } from "@/lib/skillsData";
 import { SAMPLE_JOBS } from "@/lib/sampleJobs";
 import { calculateSkillMatch, MatchResult } from "@/lib/matching";
-import { SkillCategory, ProficiencyLevel, ApplicationStatus, InterviewSlot } from "@/types/database";
+import {
+  SkillCategory,
+  ProficiencyLevel,
+  ApplicationStatus,
+  InterviewSlot,
+  ExperienceLevel,
+} from "@/types/database";
 import { getStoredInterviewSlots, saveStoredInterviewSlots } from "@/lib/interviewSlotsData";
 
 interface SavedApplication {
@@ -36,6 +43,14 @@ export default function CandidateDashboardPage() {
   // Active Tab
   const [activeTab, setActiveTab] = useState<"skills" | "matches" | "applications">("skills");
 
+  // Candidate Experience & Education
+  const [candidateExpLevel, setCandidateExpLevel] = useState<ExperienceLevel>("fresher");
+  const [candidateQualification, setCandidateQualification] = useState<string>(
+    "B.Tech / B.E. (Computer Science / IT)"
+  );
+  const [candidateCollege, setCandidateCollege] = useState<string>("National Institute of Technology");
+  const [candidateGradYear, setCandidateGradYear] = useState<number>(2026);
+
   // Candidate Skills State (Initialized with Android Specialist defaults)
   const [candidateSkills, setCandidateSkills] = useState<CandidateSkillState[]>([
     { skillName: "Kotlin", category: "Languages", proficiency: "advanced", yearsExperience: 3 },
@@ -54,6 +69,7 @@ export default function CandidateDashboardPage() {
   // Job Matching Filters & Sorting
   const [filterThresholdOnly, setFilterThresholdOnly] = useState<boolean>(false);
   const [filterRemoteOnly, setFilterRemoteOnly] = useState<boolean>(false);
+  const [filterFreshersOnly, setFilterFreshersOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<"match" | "salary" | "recent">("match");
 
   // Applications State
@@ -90,7 +106,19 @@ export default function CandidateDashboardPage() {
             setCandidateSkills(parsed);
           }
         } catch {
-          // ignore parsing error
+          // ignore
+        }
+      }
+      const savedEdu = localStorage.getItem("sbjfp_candidate_education");
+      if (savedEdu) {
+        try {
+          const parsed = JSON.parse(savedEdu);
+          if (parsed.expLevel) setCandidateExpLevel(parsed.expLevel);
+          if (parsed.qualification) setCandidateQualification(parsed.qualification);
+          if (parsed.college) setCandidateCollege(parsed.college);
+          if (parsed.gradYear) setCandidateGradYear(parsed.gradYear);
+        } catch {
+          // ignore
         }
       }
       const savedApps = localStorage.getItem("sbjfp_applications");
@@ -101,12 +129,28 @@ export default function CandidateDashboardPage() {
             setApplications(parsed);
           }
         } catch {
-          // ignore parsing error
+          // ignore
         }
       }
       setInterviewSlots(getStoredInterviewSlots());
     }
   }, []);
+
+  // Save Education / Profile Details
+  const saveEducation = (exp: ExperienceLevel, qual: string, college: string, year: number) => {
+    setCandidateExpLevel(exp);
+    setCandidateQualification(qual);
+    setCandidateCollege(college);
+    setCandidateGradYear(year);
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        "sbjfp_candidate_education",
+        JSON.stringify({ expLevel: exp, qualification: qual, college, gradYear: year })
+      );
+    }
+    showToast("Education & experience level updated!");
+  };
 
   // Sync to LocalStorage on skills change
   const saveSkills = (skillsToSave: CandidateSkillState[]) => {
@@ -134,7 +178,7 @@ export default function CandidateDashboardPage() {
         skillName: skillDef.name,
         category: skillDef.category,
         proficiency: "intermediate",
-        yearsExperience: 2,
+        yearsExperience: candidateExpLevel === "fresher" ? 0 : 2,
       };
       saveSkills([...candidateSkills, newEntry]);
     }
@@ -151,7 +195,7 @@ export default function CandidateDashboardPage() {
   const handleUpdateYears = (skillName: string, delta: number) => {
     const updated = candidateSkills.map((s) => {
       if (s.skillName === skillName) {
-        const nextYears = Math.max(1, Math.min(25, s.yearsExperience + delta));
+        const nextYears = Math.max(0, Math.min(25, s.yearsExperience + delta));
         return { ...s, yearsExperience: nextYears };
       }
       return s;
@@ -163,6 +207,14 @@ export default function CandidateDashboardPage() {
   const handleApplyPreset = (presetIndex: number) => {
     const preset = QUICK_PRESETS[presetIndex];
     if (!preset) return;
+
+    if (preset.title.includes("Fresher")) {
+      setCandidateExpLevel("fresher");
+      setCandidateGradYear(2026);
+    } else {
+      setCandidateExpLevel("3-5_years");
+    }
+
     const mapped: CandidateSkillState[] = preset.skills.map((item) => {
       const matchDef = PRESET_SKILLS.find((p) => p.name.toLowerCase() === item.skillName.toLowerCase());
       return {
@@ -212,6 +264,9 @@ export default function CandidateDashboardPage() {
     if (filterRemoteOnly) {
       list = list.filter((j) => j.is_remote);
     }
+    if (filterFreshersOnly) {
+      list = list.filter((j) => j.min_experience_years === 0 || j.experience_level === "fresher");
+    }
 
     if (sortBy === "match") {
       list.sort((a, b) => b.match.score - a.match.score);
@@ -222,7 +277,7 @@ export default function CandidateDashboardPage() {
     }
 
     return list;
-  }, [matchedJobs, filterThresholdOnly, filterRemoteOnly, sortBy]);
+  }, [matchedJobs, filterThresholdOnly, filterRemoteOnly, filterFreshersOnly, sortBy]);
 
   // Apply to Job
   const handleApplyToJob = (job: typeof SAMPLE_JOBS[0] & { match: MatchResult }) => {
@@ -267,7 +322,6 @@ export default function CandidateDashboardPage() {
       return;
     }
 
-    // 1. Update Slot
     const updatedSlots = interviewSlots.map((s) => {
       if (s.id === slotId) {
         return {
@@ -283,7 +337,6 @@ export default function CandidateDashboardPage() {
     setInterviewSlots(updatedSlots);
     saveStoredInterviewSlots(updatedSlots);
 
-    // 2. Advance Application Status
     const updatedApps = applications.map((app) => {
       if (app.id === appId) {
         return {
@@ -302,7 +355,7 @@ export default function CandidateDashboardPage() {
     showToast("🎉 Interview time slot confirmed! Check details below.");
   };
 
-  // Candidate Cancels or Reschedules Slot
+  // Reschedule Slot
   const handleRescheduleSlot = (slotId: string, appId: string) => {
     const updatedSlots = interviewSlots.map((s) => {
       if (s.id === slotId) {
@@ -319,7 +372,6 @@ export default function CandidateDashboardPage() {
     setInterviewSlots(updatedSlots);
     saveStoredInterviewSlots(updatedSlots);
 
-    // Revert status to shortlisted
     const updatedApps = applications.map((app) => {
       if (app.id === appId) {
         return {
@@ -338,7 +390,7 @@ export default function CandidateDashboardPage() {
     showToast("Interview cancelled. You can now choose another slot.");
   };
 
-  // Simulate Employer Progression (For Demo / Transparency Testing)
+  // Simulate Employer Progression
   const handleAdvanceStatus = (appId: string) => {
     const nextStatusMap: Record<ApplicationStatus, ApplicationStatus> = {
       submitted: "viewed",
@@ -417,12 +469,19 @@ export default function CandidateDashboardPage() {
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
               Candidate Portal
             </span>
+            {candidateExpLevel === "fresher" && (
+              <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-mint-50 text-emerald-800 border border-emerald-300">
+                🌱 Fresher Profile
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
               <p className="text-xs font-bold text-slate-800">{profile?.fullName || "Candidate"}</p>
-              <p className="text-[11px] text-slate-400">{profile?.email}</p>
+              <p className="text-[11px] text-slate-400">
+                {candidateExpLevel === "fresher" ? "Fresher (0 yrs)" : "Experienced"} • {candidateQualification}
+              </p>
             </div>
             <button
               onClick={async () => {
@@ -440,11 +499,14 @@ export default function CandidateDashboardPage() {
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
         {/* Portal Hero Banner */}
-        <div className="rounded-2xl p-6 sm:p-8 text-white mb-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6" style={{ backgroundColor: "var(--navy)" }}>
+        <div
+          className="rounded-2xl p-6 sm:p-8 text-white mb-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6"
+          style={{ backgroundColor: "var(--navy)" }}
+        >
           <div>
-            <div className="flex items-center gap-2.5 mb-2">
+            <div className="flex flex-wrap items-center gap-2.5 mb-2">
               <span className="text-[11px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-white/10 text-[var(--mint)]">
-                Skills Matching & Interview Slot Booking
+                Freshers & Experience Matching Active
               </span>
               <span className="text-xs text-slate-300">•</span>
               <span className="text-xs text-emerald-300 font-medium flex items-center gap-1">
@@ -456,7 +518,7 @@ export default function CandidateDashboardPage() {
               Welcome back, {profile?.fullName || "Candidate"}!
             </h1>
             <p className="text-slate-300 text-xs sm:text-sm max-w-xl leading-relaxed">
-              Curate your verified skills, discover high-match opportunities, and choose your preferred interview time slots directly from employers.
+              Curate your verified skills, education qualification, and experience level. Discover roles tailored for freshers or experienced professionals with 1-click apply.
             </p>
           </div>
 
@@ -487,7 +549,7 @@ export default function CandidateDashboardPage() {
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
-            <span>🎯 Skills Profile Builder</span>
+            <span>🎯 Skills & Education Builder</span>
             <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-[var(--blue)]">
               {candidateSkills.length}
             </span>
@@ -515,26 +577,135 @@ export default function CandidateDashboardPage() {
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
-            <span>📬 Application Tracker & Interviews</span>
+            <span>📬 Applications & Interview Slots</span>
             <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-extrabold">
               {applications.length}
             </span>
           </button>
         </div>
 
-        {/* TAB 1: SKILLS PROFILE BUILDER */}
+        {/* TAB 1: SKILLS & QUALIFICATION BUILDER */}
         {activeTab === "skills" && (
           <div className="space-y-8">
+            {/* 1. Education & Experience Level Section */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900">
+                    🎓 Qualification & Experience Background
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Specify whether you are a Fresher or Experienced, plus your degree/certification.
+                  </p>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  {candidateExpLevel === "fresher" ? "🌱 Fresher (0-1 yr)" : "💼 Experienced"}
+                </span>
+              </div>
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                {/* Experience Level Selector */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Experience Level *</label>
+                  <select
+                    value={candidateExpLevel}
+                    onChange={(e) =>
+                      saveEducation(
+                        e.target.value as ExperienceLevel,
+                        candidateQualification,
+                        candidateCollege,
+                        candidateGradYear
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-bold bg-white text-slate-800 focus:ring-1 focus:ring-[var(--blue)]"
+                  >
+                    <option value="fresher">🌱 Fresher / New Graduate (0-1 yr)</option>
+                    <option value="1-3_years">⚡ 1 - 3 Years (Junior)</option>
+                    <option value="3-5_years">💼 3 - 5 Years (Mid-Level)</option>
+                    <option value="5+_years">🚀 5+ Years (Senior / Lead)</option>
+                  </select>
+                </div>
+
+                {/* Qualification Selector */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Highest Qualification *</label>
+                  <select
+                    value={candidateQualification}
+                    onChange={(e) =>
+                      saveEducation(
+                        candidateExpLevel,
+                        e.target.value,
+                        candidateCollege,
+                        candidateGradYear
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-bold bg-white text-slate-800 focus:ring-1 focus:ring-[var(--blue)]"
+                  >
+                    {QUALIFICATION_OPTIONS.map((q) => (
+                      <option key={q} value={q}>
+                        {q}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* College / Institution */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">College / Institution</label>
+                  <input
+                    type="text"
+                    value={candidateCollege}
+                    placeholder="e.g. State University / Self-Taught"
+                    onChange={(e) => setCandidateCollege(e.target.value)}
+                    onBlur={() =>
+                      saveEducation(
+                        candidateExpLevel,
+                        candidateQualification,
+                        candidateCollege,
+                        candidateGradYear
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-medium focus:ring-1 focus:ring-[var(--blue)]"
+                  />
+                </div>
+
+                {/* Graduation / Passing Year */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Graduation Year</label>
+                  <select
+                    value={candidateGradYear}
+                    onChange={(e) =>
+                      saveEducation(
+                        candidateExpLevel,
+                        candidateQualification,
+                        candidateCollege,
+                        Number(e.target.value)
+                      )
+                    }
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-bold bg-white text-slate-800 focus:ring-1 focus:ring-[var(--blue)]"
+                  >
+                    <option value={2027}>2027 (Upcoming)</option>
+                    <option value={2026}>2026 (Final Year / Current)</option>
+                    <option value={2025}>2025</option>
+                    <option value={2024}>2024</option>
+                    <option value={2023}>2023</option>
+                    <option value={2022}>2022 or Earlier</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Quick Presets Bar */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div>
                   <h2 className="text-sm font-extrabold text-slate-900">⚡ 1-Click Role Presets</h2>
                   <p className="text-xs text-slate-500">
-                    Instantly preload a verified skill combination to test real-time job matching.
+                    Instantly load verified skills for Freshers or Experienced roles.
                   </p>
                 </div>
               </div>
-              <div className="grid sm:grid-cols-3 gap-3">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {QUICK_PRESETS.map((preset, idx) => (
                   <button
                     key={preset.title}
@@ -556,6 +727,7 @@ export default function CandidateDashboardPage() {
               </div>
             </div>
 
+            {/* 3. Skills Selector Grid */}
             <div className="grid lg:grid-cols-12 gap-8 items-start">
               {/* Left Column: Available Skills Pool */}
               <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
@@ -658,10 +830,10 @@ export default function CandidateDashboardPage() {
                       Select skills from the left or choose a 1-Click Role Preset above.
                     </p>
                     <button
-                      onClick={() => handleApplyPreset(0)}
+                      onClick={() => handleApplyPreset(1)}
                       className="text-xs py-2 px-4 rounded-xl font-bold bg-[var(--blue)] text-white hover:opacity-90"
                     >
-                      Load Android Specialist
+                      Load Campus Graduate & Fresher
                     </button>
                   </div>
                 ) : (
@@ -702,7 +874,7 @@ export default function CandidateDashboardPage() {
                               -
                             </button>
                             <span className="px-2 py-1 text-xs font-bold text-slate-800">
-                              {s.yearsExperience} yr{s.yearsExperience > 1 ? "s" : ""}
+                              {s.yearsExperience} yr{s.yearsExperience !== 1 ? "s" : ""}
                             </span>
                             <button
                               onClick={() => handleUpdateYears(s.skillName, 1)}
@@ -756,6 +928,16 @@ export default function CandidateDashboardPage() {
           <div className="space-y-6">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filterFreshersOnly}
+                    onChange={(e) => setFilterFreshersOnly(e.target.checked)}
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>🌱 Freshers Welcome Only</span>
+                </label>
+
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
                   <input
                     type="checkbox"
@@ -801,6 +983,9 @@ export default function CandidateDashboardPage() {
                     ? "bg-amber-50 text-amber-700 border-amber-300"
                     : "bg-slate-100 text-slate-600 border-slate-200";
 
+                const isFresherJob =
+                  job.min_experience_years === 0 || job.experience_level === "fresher";
+
                 return (
                   <div
                     key={job.id}
@@ -810,6 +995,11 @@ export default function CandidateDashboardPage() {
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-lg font-extrabold text-slate-900">{job.title}</h3>
+                          {isFresherJob && (
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                              <span>🌱</span> Freshers Welcome
+                            </span>
+                          )}
                           {job.is_remote && (
                             <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-[var(--blue)] border border-blue-200">
                               Remote
@@ -842,21 +1032,34 @@ export default function CandidateDashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-y border-slate-100 text-xs">
-                      <div className="flex items-center gap-2 text-slate-700">
-                        <span className="font-semibold text-slate-400">Transparent Compensation:</span>
+                    {/* Salary, Experience & Qualification Strip */}
+                    <div className="grid sm:grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Compensation:</span>
                         <span className="font-extrabold text-slate-900">
                           ₹{job.salary_min?.toLocaleString("en-IN")} - ₹{job.salary_max?.toLocaleString("en-IN")}{" "}
-                          / year
+                          / yr
                         </span>
                       </div>
-                      <span className="text-[11px] text-slate-400">
-                        Posted {new Date(job.created_at).toLocaleDateString()}
-                      </span>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Experience Target:</span>
+                        <span className="font-extrabold text-slate-800">
+                          {isFresherJob
+                            ? "🌱 Freshers (0+ yrs)"
+                            : `💼 ${job.min_experience_years}+ Years Experience`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Qualification:</span>
+                        <span className="font-extrabold text-slate-800 truncate block">
+                          🎓 {job.min_qualification || "Open to Any Degree"}
+                        </span>
+                      </div>
                     </div>
 
                     <p className="text-xs text-slate-600 leading-relaxed">{job.description}</p>
 
+                    {/* Skill Breakdown */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/70 space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-extrabold text-slate-800">
@@ -922,11 +1125,21 @@ export default function CandidateDashboardPage() {
                   </div>
                 );
               })}
+
+              {displayedJobs.length === 0 && (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                  <span className="text-3xl block mb-2">🔍</span>
+                  <p className="text-sm font-bold text-slate-700">No matching jobs found</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Try unchecking filters or explore all experience levels.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* TAB 3: APPLICATION TRACKER & INTERVIEW SLOT SELECTION */}
+        {/* TAB 3: APPLICATION TRACKER & INTERVIEWS */}
         {activeTab === "applications" && (
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -970,7 +1183,6 @@ export default function CandidateDashboardPage() {
 
                     const statusIndex = steps.findIndex((s) => s.key === app.status);
 
-                    // Find slots for this job
                     const jobSlots = interviewSlots.filter((s) => s.job_id === app.jobId);
                     const bookedSlot = jobSlots.find(
                       (s) =>
@@ -1043,11 +1255,10 @@ export default function CandidateDashboardPage() {
                           </div>
                         </div>
 
-                        {/* INTERVIEW SLOTS SECTION */}
+                        {/* Interview Section */}
                         {isShortlistedOrBeyond && (
                           <div className="pt-2">
                             {bookedSlot ? (
-                              /* 1. Confirmed Interview Card */
                               <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/70 space-y-3">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
@@ -1089,7 +1300,6 @@ export default function CandidateDashboardPage() {
                                 )}
                               </div>
                             ) : availableSlots.length > 0 ? (
-                              /* 2. Candidate Can Select From Offered Slots */
                               <div className="p-5 rounded-xl border border-purple-200 bg-purple-50/50 space-y-4">
                                 <div>
                                   <div className="flex items-center gap-2">
@@ -1160,7 +1370,6 @@ export default function CandidateDashboardPage() {
                                 </div>
                               </div>
                             ) : (
-                              /* 3. Shortlisted, but waiting for HR to publish slots */
                               <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60 text-xs text-blue-900 flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                   <span>✨</span>

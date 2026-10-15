@@ -14,6 +14,17 @@ export type SalaryPeriod = "yearly" | "monthly" | "hourly";
 export type JobStatus = "draft" | "published" | "closed";
 export type ApplicationStatus = "submitted" | "viewed" | "shortlisted" | "interview_scheduled" | "rejected" | "accepted";
 
+export type ExperienceLevel = "fresher" | "1-3_years" | "3-5_years" | "5+_years" | "any";
+
+export type QualificationLevel =
+  | "any"
+  | "high_school"
+  | "diploma"
+  | "bachelors"
+  | "masters"
+  | "doctorate"
+  | "self_taught";
+
 export interface Profile {
   id: string;
   role: UserRole;
@@ -25,6 +36,10 @@ export interface Profile {
   location: string | null;
   phone: string | null;
   website_url: string | null;
+  experience_level?: ExperienceLevel;
+  qualification?: string | null;
+  institution_name?: string | null;
+  graduation_year?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +74,9 @@ export interface Job {
   salary_currency: string;
   salary_period: SalaryPeriod;
   min_match_threshold: number | null;
+  min_experience_years?: number;
+  experience_level?: ExperienceLevel;
+  min_qualification?: string | null;
   status: JobStatus;
   created_at: string;
   updated_at: string;

@@ -5,8 +5,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { PRESET_SKILLS, SKILL_CATEGORIES } from "@/lib/skillsData";
-import { ApplicationStatus, EmploymentType, InterviewSlot } from "@/types/database";
+import { PRESET_SKILLS, SKILL_CATEGORIES, QUALIFICATION_OPTIONS } from "@/lib/skillsData";
+import {
+  ApplicationStatus,
+  EmploymentType,
+  InterviewSlot,
+  ExperienceLevel,
+} from "@/types/database";
 import { getStoredInterviewSlots, saveStoredInterviewSlots } from "@/lib/interviewSlotsData";
 
 interface EmployerJob {
@@ -19,6 +24,9 @@ interface EmployerJob {
   salaryMin: number;
   salaryMax: number;
   minMatchThreshold: number;
+  minExperienceYears: number;
+  experienceLevel: ExperienceLevel;
+  minQualification: string;
   description: string;
   status: "published" | "draft";
   createdAt: string;
@@ -30,6 +38,9 @@ interface PipelineApplicant {
   jobId: string;
   candidateName: string;
   candidateEmail: string;
+  experienceLevel: ExperienceLevel;
+  qualification: string;
+  graduationYear?: number;
   matchScore: number;
   matchedSkills: string[];
   missingRequired: string[];
@@ -48,6 +59,30 @@ export default function EmployerDashboardPage() {
   // Posted Jobs
   const [jobs, setJobs] = useState<EmployerJob[]>([
     {
+      id: "job-fresher-000",
+      title: "Junior Software Engineer (Freshers Welcome)",
+      companyName: profile?.companyName || "CodeCraft Studios",
+      employmentType: "full-time",
+      location: "Remote / Hyderabad",
+      isRemote: true,
+      salaryMin: 600000,
+      salaryMax: 950000,
+      minMatchThreshold: 60,
+      minExperienceYears: 0,
+      experienceLevel: "fresher",
+      minQualification: "Any Degree / BCA / B.Tech / Self-Taught",
+      description:
+        "Kickstart your engineering career! We welcome passionate freshers and new graduates with solid foundations in JavaScript and React.",
+      status: "published",
+      createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+      requirements: [
+        { skillName: "JavaScript", isRequired: true, minYears: 0 },
+        { skillName: "React", isRequired: true, minYears: 0 },
+        { skillName: "Git & GitHub", isRequired: true, minYears: 0 },
+        { skillName: "TypeScript", isRequired: false, minYears: 0 },
+      ],
+    },
+    {
       id: "job-android-001",
       title: "Senior Android Developer",
       companyName: profile?.companyName || "TechMatrix Labs",
@@ -57,6 +92,9 @@ export default function EmployerDashboardPage() {
       salaryMin: 1600000,
       salaryMax: 2400000,
       minMatchThreshold: 75,
+      minExperienceYears: 3,
+      experienceLevel: "3-5_years",
+      minQualification: "B.Tech / B.E. / MCA or Equivalent",
       description:
         "Building offline-first Android apps using modern Kotlin and Jetpack Compose. You will collaborate with product designers to craft fluid mobile experiences.",
       status: "published",
@@ -80,6 +118,9 @@ export default function EmployerDashboardPage() {
       salaryMin: 1800000,
       salaryMax: 2800000,
       minMatchThreshold: 70,
+      minExperienceYears: 2,
+      experienceLevel: "1-3_years",
+      minQualification: "B.Tech / B.E. / BCA / MCA / Any Degree",
       description:
         "Looking for a full-stack engineer to build scalable web platforms with Next.js App Router, TypeScript, and Supabase.",
       status: "published",
@@ -98,10 +139,29 @@ export default function EmployerDashboardPage() {
   // Applicants Pipeline
   const [applicants, setApplicants] = useState<PipelineApplicant[]>([
     {
+      id: "app-204",
+      jobId: "job-fresher-000",
+      candidateName: "Neha Patel",
+      candidateEmail: "neha.patel@example.com",
+      experienceLevel: "fresher",
+      qualification: "B.Tech Computer Science (2026 Grad)",
+      graduationYear: 2026,
+      matchScore: 94,
+      matchedSkills: ["JavaScript", "React", "Git & GitHub", "TypeScript"],
+      missingRequired: [],
+      missingPreferred: ["REST APIs"],
+      status: "shortlisted",
+      appliedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+      viewedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+    },
+    {
       id: "app-201",
       jobId: "job-android-001",
       candidateName: "Aarav Sharma",
       candidateEmail: "aarav.dev@example.com",
+      experienceLevel: "3-5_years",
+      qualification: "B.Tech IT (2023 Grad)",
+      graduationYear: 2023,
       matchScore: 88,
       matchedSkills: ["Kotlin", "Jetpack Compose", "REST APIs", "Room DB", "Git & GitHub"],
       missingRequired: [],
@@ -115,6 +175,9 @@ export default function EmployerDashboardPage() {
       jobId: "job-android-001",
       candidateName: "Rohan Varma",
       candidateEmail: "rohan.v@example.com",
+      experienceLevel: "fresher",
+      qualification: "BCA Computer Applications (2025 Grad)",
+      graduationYear: 2025,
       matchScore: 65,
       matchedSkills: ["Kotlin", "REST APIs"],
       missingRequired: ["Jetpack Compose", "Room DB"],
@@ -128,6 +191,9 @@ export default function EmployerDashboardPage() {
       jobId: "job-fullstack-002",
       candidateName: "Priya Nair",
       candidateEmail: "priya.nair@example.com",
+      experienceLevel: "1-3_years",
+      qualification: "M.Tech Software Engineering (2024 Grad)",
+      graduationYear: 2024,
       matchScore: 92,
       matchedSkills: ["TypeScript", "Next.js", "React", "Supabase", "Tailwind CSS"],
       missingRequired: [],
@@ -149,7 +215,7 @@ export default function EmployerDashboardPage() {
   const [slotMeetingLink, setSlotMeetingLink] = useState<string>("https://meet.google.com/sbj-meet-new");
   const [slotNotes, setSlotNotes] = useState<string>("Round 1: Technical Architecture & Problem Solving");
 
-  // Load Interview Slots from storage
+  // Load Interview Slots
   useEffect(() => {
     setInterviewSlots(getStoredInterviewSlots());
   }, []);
@@ -159,17 +225,22 @@ export default function EmployerDashboardPage() {
   const [formType, setFormType] = useState<EmploymentType>("full-time");
   const [formLocation, setFormLocation] = useState("Bangalore (Hybrid)");
   const [formIsRemote, setFormIsRemote] = useState(true);
-  const [formSalaryMin, setFormSalaryMin] = useState(1500000);
-  const [formSalaryMax, setFormSalaryMax] = useState(2500000);
+  const [formSalaryMin, setFormSalaryMin] = useState(1200000);
+  const [formSalaryMax, setFormSalaryMax] = useState(2000000);
   const [formThreshold, setFormThreshold] = useState(70);
+  const [formExpLevel, setFormExpLevel] = useState<ExperienceLevel>("fresher");
+  const [formMinExpYears, setFormMinExpYears] = useState<number>(0);
+  const [formMinQualification, setFormMinQualification] = useState<string>(
+    "Any Degree / BCA / B.Tech / Self-Taught"
+  );
   const [formDesc, setFormDesc] = useState("");
   const [formRequirements, setFormRequirements] = useState<
     { skillName: string; isRequired: boolean; minYears: number }[]
   >([
-    { skillName: "TypeScript", isRequired: true, minYears: 2 },
-    { skillName: "Next.js", isRequired: true, minYears: 2 },
-    { skillName: "React", isRequired: true, minYears: 2 },
-    { skillName: "Tailwind CSS", isRequired: false, minYears: 1 },
+    { skillName: "TypeScript", isRequired: true, minYears: 1 },
+    { skillName: "React", isRequired: true, minYears: 1 },
+    { skillName: "Git & GitHub", isRequired: true, minYears: 0 },
+    { skillName: "Tailwind CSS", isRequired: false, minYears: 0 },
   ]);
 
   // Skill Selector in Create Job
@@ -179,6 +250,7 @@ export default function EmployerDashboardPage() {
   // Pipeline Filter
   const [pipelineJobFilter, setPipelineJobFilter] = useState<string>("all");
   const [pipelineQualifiedOnly, setPipelineQualifiedOnly] = useState<boolean>(false);
+  const [pipelineExpFilter, setPipelineExpFilter] = useState<"all" | "fresher" | "experienced">("all");
 
   // Notification Toast
   const [notification, setNotification] = useState<string | null>(null);
@@ -213,7 +285,10 @@ export default function EmployerDashboardPage() {
     if (exists) {
       setFormRequirements(formRequirements.filter((r) => r.skillName.toLowerCase() !== skillName.toLowerCase()));
     } else {
-      setFormRequirements([...formRequirements, { skillName, isRequired: true, minYears: 2 }]);
+      setFormRequirements([
+        ...formRequirements,
+        { skillName, isRequired: true, minYears: formExpLevel === "fresher" ? 0 : 1 },
+      ]);
     }
   };
 
@@ -227,7 +302,7 @@ export default function EmployerDashboardPage() {
     setFormRequirements(
       formRequirements.map((r) => {
         if (r.skillName === skillName) {
-          const next = Math.max(1, Math.min(15, r.minYears + delta));
+          const next = Math.max(0, Math.min(15, r.minYears + delta));
           return { ...r, minYears: next };
         }
         return r;
@@ -257,6 +332,9 @@ export default function EmployerDashboardPage() {
       salaryMin: Number(formSalaryMin),
       salaryMax: Number(formSalaryMax),
       minMatchThreshold: Number(formThreshold),
+      minExperienceYears: Number(formMinExpYears),
+      experienceLevel: formExpLevel,
+      minQualification: formMinQualification,
       description: formDesc.trim() || "Role specifications and requirements.",
       status: "published",
       createdAt: new Date().toISOString(),
@@ -327,7 +405,15 @@ export default function EmployerDashboardPage() {
     const currentJob = jobs.find((j) => j.id === app.jobId);
     const meetsThreshold = currentJob ? app.matchScore >= currentJob.minMatchThreshold : true;
     const matchesQual = !pipelineQualifiedOnly || meetsThreshold;
-    return matchesJob && matchesQual;
+
+    let matchesExp = true;
+    if (pipelineExpFilter === "fresher") {
+      matchesExp = app.experienceLevel === "fresher";
+    } else if (pipelineExpFilter === "experienced") {
+      matchesExp = app.experienceLevel !== "fresher";
+    }
+
+    return matchesJob && matchesQual && matchesExp;
   });
 
   const availableFormSkills = PRESET_SKILLS.filter((s) => {
@@ -389,13 +475,13 @@ export default function EmployerDashboardPage() {
         >
           <div>
             <span className="text-[11px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-white/10 text-[var(--mint)] mb-3 inline-block">
-              Employer / HR Suite & Interview Scheduling
+              Freshers & Experienced Hiring Suite • Qualification Grounded
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold mb-2">
               {profile?.companyName ? `${profile.companyName} Hiring Suite` : "Employer Hiring Suite"}
             </h1>
             <p className="text-slate-300 text-xs sm:text-sm max-w-xl leading-relaxed">
-              Post roles with explicit skill requirements, screen candidates transparently, and offer interview slots that candidates can self-select directly.
+              Post roles for Freshers or Experienced candidates, set minimum qualifications, and offer interview slots that candidates can self-select directly.
             </p>
           </div>
 
@@ -480,7 +566,7 @@ export default function EmployerDashboardPage() {
               <div>
                 <h2 className="text-base font-extrabold text-slate-900">Your Posted Roles</h2>
                 <p className="text-xs text-slate-500">
-                  Manage requirement weights, thresholds, and view candidates applying in real-time.
+                  Manage requirement weights, thresholds, experience targets, and view applicant pools.
                 </p>
               </div>
               <button
@@ -497,6 +583,8 @@ export default function EmployerDashboardPage() {
                 const highFitCount = jobApplicants.filter(
                   (a) => a.matchScore >= job.minMatchThreshold
                 ).length;
+                const isFresher =
+                  job.minExperienceYears === 0 || job.experienceLevel === "fresher";
 
                 return (
                   <div
@@ -507,6 +595,11 @@ export default function EmployerDashboardPage() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-lg font-extrabold text-slate-900">{job.title}</h3>
+                          {isFresher && (
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              🌱 Freshers Welcome (0+ yrs)
+                            </span>
+                          )}
                           <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                             {job.status}
                           </span>
@@ -548,7 +641,7 @@ export default function EmployerDashboardPage() {
                     </div>
 
                     {/* Stats & Salary Strip */}
-                    <div className="grid sm:grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl text-xs">
+                    <div className="grid sm:grid-cols-4 gap-3 p-3 bg-slate-50 rounded-xl text-xs">
                       <div>
                         <span className="text-slate-400 block text-[11px]">Salary Range:</span>
                         <span className="font-extrabold text-slate-800">
@@ -557,9 +650,17 @@ export default function EmployerDashboardPage() {
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block text-[11px]">Match Threshold:</span>
+                        <span className="text-slate-400 block text-[11px]">Experience Target:</span>
                         <span className="font-extrabold text-slate-800">
-                          {job.minMatchThreshold}% Required Score
+                          {isFresher
+                            ? "🌱 Freshers (0 Yrs)"
+                            : `💼 ${job.minExperienceYears}+ Years Experience`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Target Qualification:</span>
+                        <span className="font-extrabold text-slate-800 truncate block">
+                          🎓 {job.minQualification}
                         </span>
                       </div>
                       <div>
@@ -605,7 +706,7 @@ export default function EmployerDashboardPage() {
             <div>
               <h2 className="text-lg font-extrabold text-slate-900">Post a Structured Role</h2>
               <p className="text-xs text-slate-500">
-                Define required skills, experience bounds, and transparent compensation upfront.
+                Define required skills, experience bounds (Freshers or Experienced), and qualification criteria.
               </p>
             </div>
 
@@ -615,7 +716,7 @@ export default function EmployerDashboardPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Senior Kotlin Engineer"
+                  placeholder="e.g. Junior Kotlin Developer (Freshers Welcome)"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
                   className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--blue)]"
@@ -633,6 +734,64 @@ export default function EmployerDashboardPage() {
                   <option value="part-time">Part-time</option>
                   <option value="contract">Contract</option>
                   <option value="internship">Internship</option>
+                </select>
+              </div>
+
+              {/* Target Experience Level */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Experience Level Target *</label>
+                <select
+                  value={formExpLevel}
+                  onChange={(e) => {
+                    const level = e.target.value as ExperienceLevel;
+                    setFormExpLevel(level);
+                    if (level === "fresher") {
+                      setFormMinExpYears(0);
+                    } else if (level === "1-3_years") {
+                      setFormMinExpYears(1);
+                    } else if (level === "3-5_years") {
+                      setFormMinExpYears(3);
+                    } else if (level === "5+_years") {
+                      setFormMinExpYears(5);
+                    }
+                  }}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[var(--blue)] bg-white"
+                >
+                  <option value="fresher">🌱 Freshers Welcome (0 Years Experience)</option>
+                  <option value="1-3_years">⚡ 1 - 3 Years (Junior / Associate)</option>
+                  <option value="3-5_years">💼 3 - 5 Years (Mid-Level)</option>
+                  <option value="5+_years">🚀 5+ Years (Senior / Lead)</option>
+                  <option value="any">Any Experience Level</option>
+                </select>
+              </div>
+
+              {/* Minimum Experience Years */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Minimum Experience (Years) *</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  required
+                  value={formMinExpYears}
+                  onChange={(e) => setFormMinExpYears(Number(e.target.value))}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--blue)]"
+                />
+              </div>
+
+              {/* Minimum Qualification Requirement */}
+              <div className="md:col-span-2 space-y-1">
+                <label className="text-xs font-bold text-slate-700">Required / Preferred Qualification *</label>
+                <select
+                  value={formMinQualification}
+                  onChange={(e) => setFormMinQualification(e.target.value)}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[var(--blue)] bg-white"
+                >
+                  {QUALIFICATION_OPTIONS.map((q) => (
+                    <option key={q} value={q}>
+                      {q}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -724,7 +883,7 @@ export default function EmployerDashboardPage() {
                 </h3>
                 <p className="text-xs text-slate-500">
                   Select skills, designate them as <strong>Required (75% weight)</strong> or{" "}
-                  <strong>Preferred (25% weight)</strong>, and configure minimum years.
+                  <strong>Preferred (25% weight)</strong>, and configure minimum years (0 for Freshers!).
                 </p>
               </div>
 
@@ -886,14 +1045,27 @@ export default function EmployerDashboardPage() {
                   ))}
                 </select>
 
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer ml-3">
+                <span className="text-xs font-bold text-slate-500 ml-2">Experience:</span>
+                <select
+                  value={pipelineExpFilter}
+                  onChange={(e) =>
+                    setPipelineExpFilter(e.target.value as "all" | "fresher" | "experienced")
+                  }
+                  className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-700"
+                >
+                  <option value="all">All Experience Levels</option>
+                  <option value="fresher">🌱 Freshers Only</option>
+                  <option value="experienced">💼 Experienced Only</option>
+                </select>
+
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer ml-2">
                   <input
                     type="checkbox"
                     checked={pipelineQualifiedOnly}
                     onChange={(e) => setPipelineQualifiedOnly(e.target.checked)}
                     className="rounded text-[var(--blue)] focus:ring-[var(--blue)]"
                   />
-                  <span>Qualified Only (≥ Job Threshold)</span>
+                  <span>Qualified Only (≥ Threshold)</span>
                 </label>
               </div>
 
@@ -913,6 +1085,8 @@ export default function EmployerDashboardPage() {
                     ? "bg-amber-50 text-amber-700 border-amber-300"
                     : "bg-slate-100 text-slate-600 border-slate-200";
 
+                const isFresher = app.experienceLevel === "fresher";
+
                 return (
                   <div
                     key={app.id}
@@ -920,15 +1094,32 @@ export default function EmployerDashboardPage() {
                   >
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-base font-extrabold text-slate-900">
                             {app.candidateName}
                           </h3>
+                          {isFresher ? (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              🌱 Fresher
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                              💼 Experienced
+                            </span>
+                          )}
                           <span className="text-xs text-slate-400">• {app.candidateEmail}</span>
                         </div>
-                        <p className="text-xs font-bold text-[var(--blue)] mt-1">
-                          Applied for: {job?.title || "Role"}
-                        </p>
+
+                        {/* Candidate Qualification Strip */}
+                        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+                          <span className="font-semibold text-slate-700">
+                            🎓 {app.qualification}
+                          </span>
+                          <span className="text-slate-300">•</span>
+                          <span className="font-bold text-[var(--blue)]">
+                            Applied for: {job?.title || "Role"}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Score Badge */}
@@ -1029,7 +1220,6 @@ export default function EmployerDashboardPage() {
         {/* TAB 4: INTERVIEW SLOTS (HR) */}
         {activeTab === "interviews" && (
           <div className="space-y-8">
-            {/* Top Explainer */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h2 className="text-base font-extrabold text-slate-900">
@@ -1050,7 +1240,7 @@ export default function EmployerDashboardPage() {
             </div>
 
             <div className="grid lg:grid-cols-12 gap-8 items-start">
-              {/* Left Column: Create Interview Slot Form */}
+              {/* Left Column: Form */}
               <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                 <div className="border-b border-slate-100 pb-3">
                   <h3 className="text-sm font-extrabold text-slate-900">➕ Add New Interview Slot</h3>
@@ -1144,7 +1334,7 @@ export default function EmployerDashboardPage() {
                 </form>
               </div>
 
-              {/* Right Column: Existing Slots List */}
+              {/* Right Column: Existing Slots */}
               <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div>
@@ -1200,7 +1390,6 @@ export default function EmployerDashboardPage() {
                           </button>
                         </div>
 
-                        {/* Candidate Booking Info or Open Note */}
                         {isBooked ? (
                           <div className="p-2.5 bg-emerald-100/60 rounded-lg text-xs flex items-center justify-between">
                             <span className="font-bold text-emerald-900">
@@ -1236,16 +1425,6 @@ export default function EmployerDashboardPage() {
                       </div>
                     );
                   })}
-
-                  {interviewSlots.length === 0 && (
-                    <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl">
-                      <span className="text-2xl block mb-2">📅</span>
-                      <p className="text-xs font-bold text-slate-700">No interview slots created yet</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Use the form on the left to offer interview slots to shortlisted candidates.
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

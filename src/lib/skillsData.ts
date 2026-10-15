@@ -98,6 +98,18 @@ export const QUICK_PRESETS: {
     ],
   },
   {
+    title: "Campus Graduate & Fresher",
+    role: "Junior Web Developer (0 yrs)",
+    icon: "🌱",
+    skills: [
+      { skillName: "JavaScript", proficiency: "intermediate", yearsExperience: 1 },
+      { skillName: "React", proficiency: "beginner", yearsExperience: 1 },
+      { skillName: "Git & GitHub", proficiency: "intermediate", yearsExperience: 1 },
+      { skillName: "TypeScript", proficiency: "beginner", yearsExperience: 1 },
+      { skillName: "REST APIs", proficiency: "beginner", yearsExperience: 1 },
+    ],
+  },
+  {
     title: "Backend Go / Python",
     role: "Services & Data Engineer",
     icon: "⚙️",
@@ -111,3 +123,16 @@ export const QUICK_PRESETS: {
     ],
   },
 ];
+
+export const QUALIFICATION_OPTIONS = [
+  "B.Tech / B.E. (Computer Science / IT)",
+  "BCA / MCA (Computer Applications)",
+  "B.Sc / M.Sc (Computer Science / IT)",
+  "Diploma in Engineering / Poly-technic",
+  "Any Graduate / Non-Tech Degree",
+  "Self-Taught Developer / Coding Bootcamp",
+  "Master's Degree (M.Tech / MS / MBA)",
+  "Doctorate / PhD",
+  "Open to Any Qualification / No Degree Required",
+];
+
