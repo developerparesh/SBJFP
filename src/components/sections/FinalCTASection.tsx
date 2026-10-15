@@ -41,14 +41,14 @@ export default function FinalCTASection() {
               Create your skills profile and discover jobs that genuinely match what you bring.
             </p>
             <Link
-              href="#"
+              href="/auth/signup?role=candidate"
               className="w-full text-center px-6 py-3 rounded-xl font-bold text-[var(--navy)] transition-all hover:opacity-90 text-sm"
               style={{ backgroundColor: "var(--mint)" }}
-              aria-label="Get started as a candidate (coming soon)"
+              aria-label="Get started as a candidate"
             >
               Find My Match
             </Link>
-            <p className="text-xs text-slate-500">Registration coming soon</p>
+            <p className="text-xs text-slate-300">Free candidate account</p>
           </div>
 
           {/* Employer CTA */}
@@ -64,14 +64,14 @@ export default function FinalCTASection() {
               Post structured jobs and discover candidates who actually fit your requirements.
             </p>
             <Link
-              href="#"
+              href="/auth/signup?role=employer"
               className="w-full text-center px-6 py-3 rounded-xl font-bold text-white transition-all hover:opacity-90 text-sm"
               style={{ backgroundColor: "var(--blue)" }}
-              aria-label="Get started as an employer (coming soon)"
+              aria-label="Get started as an employer"
             >
               Hire Talent
             </Link>
-            <p className="text-xs text-slate-400">Registration coming soon</p>
+            <p className="text-xs text-slate-500">Free employer account</p>
           </div>
         </div>
       </div>

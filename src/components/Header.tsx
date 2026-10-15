@@ -3,17 +3,19 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 
 const navLinks = [
   { label: "Home", href: "/" },
-  { label: "Find Jobs", href: "#for-job-seekers" },
-  { label: "For Employers", href: "#for-employers" },
-  { label: "How It Works", href: "#how-it-works" },
+  { label: "Find Jobs", href: "/#for-job-seekers" },
+  { label: "For Employers", href: "/#for-employers" },
+  { label: "How It Works", href: "/#how-it-works" },
 ];
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { user, profile, signOut, loading } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -29,6 +31,8 @@ export default function Header() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+
+  const dashboardUrl = `/dashboard/${profile?.role || "candidate"}`;
 
   return (
     <header
@@ -78,26 +82,45 @@ export default function Header() {
 
         {/* Desktop CTA buttons */}
         <div className="hidden md:flex items-center gap-3">
-          <Link
-            href="#"
-            aria-label="Sign In (coming soon)"
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-[#102A43] rounded-md transition-colors"
-          >
-            Sign In
-          </Link>
-          <Link
-            href="#hero-cta"
-            className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
-            style={{ backgroundColor: "var(--blue)" }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.backgroundColor = "#1065a8")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--blue)")
-            }
-          >
-            Get Started
-          </Link>
+          {!loading && user ? (
+            <>
+              <Link
+                href={dashboardUrl}
+                className="px-3.5 py-2 text-sm font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition flex items-center gap-2"
+              >
+                <span>{profile?.role === "employer" ? "🏢" : "👤"}</span>
+                <span>Dashboard</span>
+              </Link>
+              <button
+                onClick={() => signOut()}
+                className="px-3 py-2 text-xs font-medium text-slate-500 hover:text-red-600 rounded-md transition"
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/auth/signin"
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-[#102A43] rounded-md transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/auth/signup"
+                className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+                style={{ backgroundColor: "var(--blue)" }}
+                onMouseOver={(e) =>
+                  (e.currentTarget.style.backgroundColor = "#1065a8")
+                }
+                onMouseOut={(e) =>
+                  (e.currentTarget.style.backgroundColor = "var(--blue)")
+                }
+              >
+                Get Started
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -155,25 +178,53 @@ export default function Header() {
                 </Link>
               </li>
             ))}
-            <li className="border-t border-slate-100 mt-2 pt-2">
-              <Link
-                href="#"
-                onClick={() => setMenuOpen(false)}
-                className="block px-3 py-2.5 text-sm font-medium text-slate-600 rounded-md hover:bg-slate-50 transition-colors"
-              >
-                Sign In
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="#hero-cta"
-                onClick={() => setMenuOpen(false)}
-                className="block px-3 py-2.5 text-sm font-semibold text-white rounded-lg text-center transition-colors"
-                style={{ backgroundColor: "var(--blue)" }}
-              >
-                Get Started
-              </Link>
-            </li>
+
+            {!loading && user ? (
+              <>
+                <li className="border-t border-slate-100 mt-2 pt-2">
+                  <Link
+                    href={dashboardUrl}
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-semibold text-slate-800 rounded-md hover:bg-slate-50 transition"
+                  >
+                    Go to Dashboard ({profile?.role})
+                  </Link>
+                </li>
+                <li>
+                  <button
+                    onClick={() => {
+                      signOut();
+                      setMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm text-red-600 font-medium"
+                  >
+                    Sign Out
+                  </button>
+                </li>
+              </>
+            ) : (
+              <>
+                <li className="border-t border-slate-100 mt-2 pt-2">
+                  <Link
+                    href="/auth/signin"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-medium text-slate-600 rounded-md hover:bg-slate-50 transition-colors"
+                  >
+                    Sign In
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/auth/signup"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-2.5 text-sm font-semibold text-white rounded-lg text-center transition-colors"
+                    style={{ backgroundColor: "var(--blue)" }}
+                  >
+                    Get Started
+                  </Link>
+                </li>
+              </>
+            )}
           </ul>
         </div>
       )}

@@ -155,14 +155,14 @@ export default function HeroSection() {
               aria-label="Primary calls to action"
             >
               <Link
-                href="#for-job-seekers"
+                href="/auth/signup?role=candidate"
                 className="inline-flex items-center justify-center px-7 py-3.5 text-base font-bold rounded-xl text-[var(--navy)] transition-all hover:scale-[1.02]"
                 style={{ backgroundColor: "var(--mint)" }}
               >
                 Find My Match
               </Link>
               <Link
-                href="#for-employers"
+                href="/auth/signup?role=employer"
                 className="inline-flex items-center justify-center px-7 py-3.5 text-base font-semibold rounded-xl border-2 text-white transition-all hover:bg-white/10"
                 style={{ borderColor: "rgba(255,255,255,0.3)" }}
               >
