@@ -1,15 +1,289 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import {
+  PRESET_SKILLS,
+  SKILL_CATEGORIES,
+  QUICK_PRESETS,
+  CandidateSkillState,
+} from "@/lib/skillsData";
+import { SAMPLE_JOBS } from "@/lib/sampleJobs";
+import { calculateSkillMatch, MatchResult } from "@/lib/matching";
+import { SkillCategory, ProficiencyLevel, ApplicationStatus } from "@/types/database";
+
+interface SavedApplication {
+  id: string;
+  jobId: string;
+  jobTitle: string;
+  companyName: string;
+  location: string;
+  salaryText: string;
+  matchScore: number;
+  status: ApplicationStatus;
+  appliedAt: string;
+  viewedAt: string | null;
+}
 
 export default function CandidateDashboardPage() {
   const router = useRouter();
   const { user, profile, loading, signOut } = useAuth();
 
+  // Active Tab
+  const [activeTab, setActiveTab] = useState<"skills" | "matches" | "applications">("skills");
+
+  // Candidate Skills State (Initialized with Android Specialist defaults)
+  const [candidateSkills, setCandidateSkills] = useState<CandidateSkillState[]>([
+    { skillName: "Kotlin", category: "Languages", proficiency: "advanced", yearsExperience: 3 },
+    { skillName: "Jetpack Compose", category: "Frameworks", proficiency: "advanced", yearsExperience: 2 },
+    { skillName: "Android SDK", category: "Frameworks", proficiency: "expert", yearsExperience: 4 },
+    { skillName: "Room DB", category: "Databases", proficiency: "intermediate", yearsExperience: 2 },
+    { skillName: "REST APIs", category: "Tools", proficiency: "advanced", yearsExperience: 3 },
+    { skillName: "Git & GitHub", category: "Tools", proficiency: "advanced", yearsExperience: 4 },
+  ]);
+
+  // Skill Filtering & Search in Builder
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [saveStatus, setSaveStatus] = useState<string>("Synced");
+
+  // Job Matching Filters & Sorting
+  const [filterThresholdOnly, setFilterThresholdOnly] = useState<boolean>(false);
+  const [filterRemoteOnly, setFilterRemoteOnly] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<"match" | "salary" | "recent">("match");
+
+  // Applications State
+  const [applications, setApplications] = useState<SavedApplication[]>([
+    {
+      id: "app-101",
+      jobId: "job-android-001",
+      jobTitle: "Senior Android Developer",
+      companyName: "TechMatrix Labs",
+      location: "Bangalore (Hybrid)",
+      salaryText: "₹16,00,000 - ₹24,00,000 / year",
+      matchScore: 83,
+      status: "viewed",
+      appliedAt: new Date(Date.now() - 86400000).toISOString(),
+      viewedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+    },
+  ]);
+
+  // Modal / Toast Notification
+  const [notification, setNotification] = useState<string | null>(null);
+
+  // Load from LocalStorage if available
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sbjfp_candidate_skills");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCandidateSkills(parsed);
+          }
+        } catch {
+          // ignore parsing error
+        }
+      }
+      const savedApps = localStorage.getItem("sbjfp_applications");
+      if (savedApps) {
+        try {
+          const parsed = JSON.parse(savedApps);
+          if (Array.isArray(parsed)) {
+            setApplications(parsed);
+          }
+        } catch {
+          // ignore parsing error
+        }
+      }
+    }
+  }, []);
+
+  // Sync to LocalStorage on skills change
+  const saveSkills = (skillsToSave: CandidateSkillState[]) => {
+    setCandidateSkills(skillsToSave);
+    setSaveStatus("Saving...");
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sbjfp_candidate_skills", JSON.stringify(skillsToSave));
+    }
+    setTimeout(() => {
+      setSaveStatus("Profile Saved");
+      setTimeout(() => setSaveStatus("Synced"), 2000);
+    }, 300);
+  };
+
+  // Toggle or add a skill
+  const handleToggleSkill = (skillDef: { name: string; category: SkillCategory }) => {
+    const exists = candidateSkills.some((s) => s.skillName.toLowerCase() === skillDef.name.toLowerCase());
+    if (exists) {
+      const updated = candidateSkills.filter(
+        (s) => s.skillName.toLowerCase() !== skillDef.name.toLowerCase()
+      );
+      saveSkills(updated);
+    } else {
+      const newEntry: CandidateSkillState = {
+        skillName: skillDef.name,
+        category: skillDef.category,
+        proficiency: "intermediate",
+        yearsExperience: 2,
+      };
+      saveSkills([...candidateSkills, newEntry]);
+    }
+  };
+
+  // Update proficiency or years
+  const handleUpdateProficiency = (skillName: string, level: ProficiencyLevel) => {
+    const updated = candidateSkills.map((s) =>
+      s.skillName === skillName ? { ...s, proficiency: level } : s
+    );
+    saveSkills(updated);
+  };
+
+  const handleUpdateYears = (skillName: string, delta: number) => {
+    const updated = candidateSkills.map((s) => {
+      if (s.skillName === skillName) {
+        const nextYears = Math.max(1, Math.min(25, s.yearsExperience + delta));
+        return { ...s, yearsExperience: nextYears };
+      }
+      return s;
+    });
+    saveSkills(updated);
+  };
+
+  // Apply Quick Preset
+  const handleApplyPreset = (presetIndex: number) => {
+    const preset = QUICK_PRESETS[presetIndex];
+    if (!preset) return;
+    const mapped: CandidateSkillState[] = preset.skills.map((item) => {
+      const matchDef = PRESET_SKILLS.find((p) => p.name.toLowerCase() === item.skillName.toLowerCase());
+      return {
+        skillName: item.skillName,
+        category: matchDef ? matchDef.category : "Languages",
+        proficiency: item.proficiency,
+        yearsExperience: item.yearsExperience,
+      };
+    });
+    saveSkills(mapped);
+    showToast(`Loaded ${preset.title} preset (${mapped.length} skills)!`);
+  };
+
+  // Show Toast
+  const showToast = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  // Compute Job Matches
+  const matchedJobs = useMemo(() => {
+    const candidateInput = candidateSkills.map((s) => ({
+      skillName: s.skillName,
+      yearsExperience: s.yearsExperience,
+    }));
+
+    return SAMPLE_JOBS.map((job) => {
+      const match = calculateSkillMatch(
+        candidateInput,
+        job.requirements,
+        job.min_match_threshold
+      );
+      return {
+        ...job,
+        match,
+      };
+    });
+  }, [candidateSkills]);
+
+  // Filtered & Sorted Jobs
+  const displayedJobs = useMemo(() => {
+    let list = [...matchedJobs];
+
+    if (filterThresholdOnly) {
+      list = list.filter((j) => j.match.meetsThreshold);
+    }
+    if (filterRemoteOnly) {
+      list = list.filter((j) => j.is_remote);
+    }
+
+    if (sortBy === "match") {
+      list.sort((a, b) => b.match.score - a.match.score);
+    } else if (sortBy === "salary") {
+      list.sort((a, b) => (b.salary_max || 0) - (a.salary_max || 0));
+    } else if (sortBy === "recent") {
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+
+    return list;
+  }, [matchedJobs, filterThresholdOnly, filterRemoteOnly, sortBy]);
+
+  // Apply to Job
+  const handleApplyToJob = (job: typeof SAMPLE_JOBS[0] & { match: MatchResult }) => {
+    const alreadyApplied = applications.some((a) => a.jobId === job.id);
+    if (alreadyApplied) {
+      showToast("You have already applied to this role. Check the Application Tracker.");
+      setActiveTab("applications");
+      return;
+    }
+
+    const salaryFormatted = job.salary_min && job.salary_max
+      ? `₹${job.salary_min.toLocaleString("en-IN")} - ₹${job.salary_max.toLocaleString("en-IN")} / year`
+      : "Competitive";
+
+    const newApp: SavedApplication = {
+      id: `app-${Date.now()}`,
+      jobId: job.id,
+      jobTitle: job.title,
+      companyName: job.company_name,
+      location: job.location,
+      salaryText: salaryFormatted,
+      matchScore: job.match.score,
+      status: "submitted",
+      appliedAt: new Date().toISOString(),
+      viewedAt: null,
+    };
+
+    const updated = [newApp, ...applications];
+    setApplications(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sbjfp_applications", JSON.stringify(updated));
+    }
+
+    showToast(`Application submitted to ${job.company_name} with ${job.match.score}% match score!`);
+  };
+
+  // Simulate Employer Progression (For Demo / Transparency Testing)
+  const handleAdvanceStatus = (appId: string) => {
+    const nextStatusMap: Record<ApplicationStatus, ApplicationStatus> = {
+      submitted: "viewed",
+      viewed: "shortlisted",
+      shortlisted: "interview_scheduled",
+      interview_scheduled: "accepted",
+      accepted: "accepted",
+      rejected: "rejected",
+    };
+
+    const updated = applications.map((app) => {
+      if (app.id === appId) {
+        const next = nextStatusMap[app.status];
+        return {
+          ...app,
+          status: next,
+          viewedAt: app.viewedAt || new Date().toISOString(),
+        };
+      }
+      return app;
+    });
+
+    setApplications(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sbjfp_applications", JSON.stringify(updated));
+    }
+    showToast("Application status updated by employer!");
+  };
+
+  // Auth Guard
   useEffect(() => {
     if (!loading && !user) {
       router.push("/auth/signin");
@@ -28,9 +302,26 @@ export default function CandidateDashboardPage() {
     );
   }
 
+  // Filter skills pool for builder
+  const filteredAvailableSkills = PRESET_SKILLS.filter((s) => {
+    const matchesCategory = selectedCategory === "All" || s.category === selectedCategory;
+    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
+    return matchesCategory && matchesSearch;
+  });
+
+  const qualifiedCount = matchedJobs.filter((j) => j.match.meetsThreshold).length;
+
   return (
-    <div className="min-h-screen bg-[var(--bg)] flex flex-col">
-      {/* Top Navigation */}
+    <div className="min-h-screen bg-[var(--bg)] flex flex-col font-sans">
+      {/* Toast Notification */}
+      {notification && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[var(--navy)] text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 border border-slate-700 animate-bounce">
+          <span className="text-emerald-400 font-bold text-lg">✓</span>
+          <span className="text-xs font-medium">{notification}</span>
+        </div>
+      )}
+
+      {/* Top Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -45,7 +336,7 @@ export default function CandidateDashboardPage() {
 
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-slate-800">{profile?.fullName}</p>
+              <p className="text-xs font-bold text-slate-800">{profile?.fullName || "Candidate"}</p>
               <p className="text-[11px] text-slate-400">{profile?.email}</p>
             </div>
             <button
@@ -63,103 +354,656 @@ export default function CandidateDashboardPage() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        {/* Welcome Banner */}
-        <div className="rounded-2xl p-6 sm:p-8 text-white mb-8" style={{ backgroundColor: "var(--navy)" }}>
-          <span className="text-xs font-bold tracking-wider uppercase px-3 py-1 rounded-full bg-white/10 text-[var(--mint)] mb-3 inline-block">
-            Phase 2: Authentication Active
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold mb-2">
-            Welcome back, {profile?.fullName}!
-          </h1>
-          <p className="text-slate-300 text-sm max-w-xl leading-relaxed">
-            Your candidate profile is authenticated via Supabase. Next, you will be able to select your structured skills and discover high-match opportunities.
-          </p>
-        </div>
-
-        {/* Feature Cards Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
-          {/* Card 1: Skill Profile */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl mb-4">
-                🎯
-              </div>
-              <h2 className="text-base font-bold text-slate-900 mb-1">Your Skills Profile</h2>
-              <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                Add your technical languages, tools, and experience levels to activate automated matching.
-              </p>
+        {/* Portal Hero Banner */}
+        <div className="rounded-2xl p-6 sm:p-8 text-white mb-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6" style={{ backgroundColor: "var(--navy)" }}>
+          <div>
+            <div className="flex items-center gap-2.5 mb-2">
+              <span className="text-[11px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-white/10 text-[var(--mint)]">
+                Phase 4: Candidate Experience & Skills Matching
+              </span>
+              <span className="text-xs text-slate-300">•</span>
+              <span className="text-xs text-emerald-300 font-medium flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                {saveStatus}
+              </span>
             </div>
-            <button
-              disabled
-              className="w-full py-2 px-3 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed"
-            >
-              Profile Builder (Coming in Phase 4)
-            </button>
+            <h1 className="text-2xl sm:text-3xl font-extrabold mb-2">
+              Welcome back, {profile?.fullName || "Candidate"}!
+            </h1>
+            <p className="text-slate-300 text-xs sm:text-sm max-w-xl leading-relaxed">
+              Curate your verified skill profile to instantly reveal transparent opportunities matched via deterministic 75% required / 25% preferred scoring.
+            </p>
           </div>
 
-          {/* Card 2: Matched Jobs */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl mb-4">
-                📊
-              </div>
-              <h2 className="text-base font-bold text-slate-900 mb-1">Matched Opportunities</h2>
-              <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                Jobs that align with your structured skills will appear here with explainable match percentages.
-              </p>
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-3 gap-3 bg-white/5 p-4 rounded-xl border border-white/10 min-w-[280px]">
+            <div className="text-center">
+              <span className="block text-2xl font-black text-[var(--mint)]">{candidateSkills.length}</span>
+              <span className="text-[10px] text-slate-300 uppercase tracking-wide">Skills Added</span>
             </div>
-            <button
-              disabled
-              className="w-full py-2 px-3 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed"
-            >
-              Job Matches (Coming Soon)
-            </button>
-          </div>
-
-          {/* Card 3: Applications */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl mb-4">
-                📬
-              </div>
-              <h2 className="text-base font-bold text-slate-900 mb-1">Application Tracker</h2>
-              <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                Track status updates and view real-time recorded employer interactions transparently.
-              </p>
+            <div className="text-center border-x border-white/10">
+              <span className="block text-2xl font-black text-white">{qualifiedCount}</span>
+              <span className="text-[10px] text-slate-300 uppercase tracking-wide">Eligible Roles</span>
             </div>
-            <button
-              disabled
-              className="w-full py-2 px-3 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed"
-            >
-              Tracking View (Coming Soon)
-            </button>
+            <div className="text-center">
+              <span className="block text-2xl font-black text-amber-300">{applications.length}</span>
+              <span className="text-[10px] text-slate-300 uppercase tracking-wide">Applied</span>
+            </div>
           </div>
         </div>
 
-        {/* Account Details Box */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">
-            Authenticated Profile Details
-          </h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-            <div className="p-3 bg-slate-50 rounded-xl">
-              <span className="text-slate-400 block mb-1">Full Name</span>
-              <span className="font-semibold text-slate-800">{profile?.fullName}</span>
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-200 mb-8 overflow-x-auto pb-1">
+          <button
+            onClick={() => setActiveTab("skills")}
+            className={`py-3 px-5 text-sm font-bold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+              activeTab === "skills"
+                ? "border-[var(--blue)] text-[var(--blue)] bg-white rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <span>🎯 Skills Profile Builder</span>
+            <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-[var(--blue)]">
+              {candidateSkills.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("matches")}
+            className={`py-3 px-5 text-sm font-bold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+              activeTab === "matches"
+                ? "border-[var(--blue)] text-[var(--blue)] bg-white rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <span>📊 Matched Opportunities</span>
+            <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-700">
+              {qualifiedCount} qualified
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("applications")}
+            className={`py-3 px-5 text-sm font-bold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+              activeTab === "applications"
+                ? "border-[var(--blue)] text-[var(--blue)] bg-white rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <span>📬 Application Tracker</span>
+            <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
+              {applications.length}
+            </span>
+          </button>
+        </div>
+
+        {/* TAB 1: SKILLS PROFILE BUILDER */}
+        {activeTab === "skills" && (
+          <div className="space-y-8">
+            {/* Quick Presets Bar */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900">⚡ 1-Click Role Presets</h2>
+                  <p className="text-xs text-slate-500">
+                    Instantly preload a verified skill combination to test real-time job matching.
+                  </p>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {QUICK_PRESETS.map((preset, idx) => (
+                  <button
+                    key={preset.title}
+                    onClick={() => handleApplyPreset(idx)}
+                    className="p-3.5 rounded-xl border border-slate-200 hover:border-[var(--blue)] hover:bg-blue-50/40 text-left transition flex items-start gap-3 group"
+                  >
+                    <span className="text-2xl">{preset.icon}</span>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 group-hover:text-[var(--blue)]">
+                        {preset.title}
+                      </p>
+                      <p className="text-[11px] text-slate-500">{preset.role}</p>
+                      <span className="text-[10px] text-slate-400 mt-1 inline-block">
+                        {preset.skills.length} skills • Click to load
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="p-3 bg-slate-50 rounded-xl">
-              <span className="text-slate-400 block mb-1">Email</span>
-              <span className="font-semibold text-slate-800 truncate block">{profile?.email}</span>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl">
-              <span className="text-slate-400 block mb-1">User Role</span>
-              <span className="font-semibold text-emerald-700 capitalize">{profile?.role}</span>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl">
-              <span className="text-slate-400 block mb-1">Supabase User ID</span>
-              <span className="font-mono text-[10px] text-slate-600 truncate block">{user.id}</span>
+
+            <div className="grid lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Available Skills Pool */}
+              <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 mb-1">Select Skills</h3>
+                  <p className="text-xs text-slate-500">
+                    Click skills to add or remove them from your active profile.
+                  </p>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search skills (e.g. Kotlin, Next.js, Supabase)..."
+                    className="w-full text-xs py-2.5 pl-9 pr-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[var(--blue)]"
+                  />
+                  <svg className="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+
+                {/* Categories Filter */}
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setSelectedCategory("All")}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                      selectedCategory === "All"
+                        ? "bg-[var(--navy)] text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    All
+                  </button>
+                  {SKILL_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                        selectedCategory === cat
+                          ? "bg-[var(--navy)] text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Skill Chips */}
+                <div className="flex flex-wrap gap-2 max-h-80 overflow-y-auto p-1">
+                  {filteredAvailableSkills.map((s) => {
+                    const isSelected = candidateSkills.some(
+                      (item) => item.skillName.toLowerCase() === s.name.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={s.name}
+                        onClick={() => handleToggleSkill(s)}
+                        className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition flex items-center gap-1.5 ${
+                          isSelected
+                            ? "bg-blue-50 border-[var(--blue)] text-[var(--blue)] font-bold shadow-xs"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        <span>{isSelected ? "✓" : "+"}</span>
+                        <span>{s.name}</span>
+                      </button>
+                    );
+                  })}
+                  {filteredAvailableSkills.length === 0 && (
+                    <p className="text-xs text-slate-400 py-4 text-center w-full">
+                      No matching skills found.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Active Profile Skills & Experience Details */}
+              <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900">
+                      Active Profile Skills ({candidateSkills.length})
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Configure proficiency and experience years for each verified skill.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      saveSkills([]);
+                      showToast("Cleared candidate skills.");
+                    }}
+                    className="text-xs text-red-500 hover:underline font-semibold"
+                  >
+                    Clear All
+                  </button>
+                </div>
+
+                {candidateSkills.length === 0 ? (
+                  <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                    <span className="text-3xl block mb-2">📌</span>
+                    <p className="text-xs font-bold text-slate-700 mb-1">No skills configured yet</p>
+                    <p className="text-xs text-slate-400 mb-4">
+                      Select skills from the left or choose a 1-Click Role Preset above.
+                    </p>
+                    <button
+                      onClick={() => handleApplyPreset(0)}
+                      className="text-xs py-2 px-4 rounded-xl font-bold bg-[var(--blue)] text-white hover:opacity-90"
+                    >
+                      Load Android Specialist
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                    {candidateSkills.map((s) => (
+                      <div
+                        key={s.skillName}
+                        className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900">{s.skillName}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-200 text-slate-600">
+                              {s.category}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {/* Proficiency Selector */}
+                          <select
+                            value={s.proficiency}
+                            onChange={(e) =>
+                              handleUpdateProficiency(s.skillName, e.target.value as ProficiencyLevel)
+                            }
+                            className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-[var(--blue)]"
+                          >
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                            <option value="expert">Expert</option>
+                          </select>
+
+                          {/* Years Experience Counter */}
+                          <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden">
+                            <button
+                              onClick={() => handleUpdateYears(s.skillName, -1)}
+                              className="px-2 py-1 text-slate-500 hover:bg-slate-100 text-xs font-bold"
+                            >
+                              -
+                            </button>
+                            <span className="px-2 py-1 text-xs font-bold text-slate-800">
+                              {s.yearsExperience} yr{s.yearsExperience > 1 ? "s" : ""}
+                            </span>
+                            <button
+                              onClick={() => handleUpdateYears(s.skillName, 1)}
+                              className="px-2 py-1 text-slate-500 hover:bg-slate-100 text-xs font-bold"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          {/* Remove Button */}
+                          <button
+                            onClick={() =>
+                              handleToggleSkill({ name: s.skillName, category: s.category })
+                            }
+                            className="p-1.5 text-slate-400 hover:text-red-500 transition"
+                            title="Remove skill"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Auto Match Preview Callout */}
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">⚡</span>
+                    <div>
+                      <p className="text-xs font-bold text-emerald-900">
+                        {qualifiedCount} Opportunities match your current profile
+                      </p>
+                      <p className="text-[11px] text-emerald-700">
+                        Switch to Matched Opportunities to view explainable breakdown.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("matches")}
+                    className="py-1.5 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition"
+                  >
+                    View Matches →
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* TAB 2: MATCHED OPPORTUNITIES */}
+        {activeTab === "matches" && (
+          <div className="space-y-6">
+            {/* Filter / Sort Control Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filterThresholdOnly}
+                    onChange={(e) => setFilterThresholdOnly(e.target.checked)}
+                    className="rounded text-[var(--blue)] focus:ring-[var(--blue)]"
+                  />
+                  <span>Qualified Only (≥ Threshold)</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filterRemoteOnly}
+                    onChange={(e) => setFilterRemoteOnly(e.target.checked)}
+                    className="rounded text-[var(--blue)] focus:ring-[var(--blue)]"
+                  />
+                  <span>Remote Only</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Sort by:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "match" | "salary" | "recent")}
+                  className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-bold text-slate-700 focus:outline-none"
+                >
+                  <option value="match">Highest Match Score</option>
+                  <option value="salary">Highest Salary</option>
+                  <option value="recent">Most Recent</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Job Listings Grid */}
+            <div className="space-y-4">
+              {displayedJobs.map((job) => {
+                const isApplied = applications.some((a) => a.jobId === job.id);
+                const scoreColor =
+                  job.match.score >= 80
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                    : job.match.score >= 60
+                    ? "bg-amber-50 text-amber-700 border-amber-300"
+                    : "bg-slate-100 text-slate-600 border-slate-200";
+
+                return (
+                  <div
+                    key={job.id}
+                    className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:border-[var(--blue)] transition space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      {/* Job Header */}
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-lg font-extrabold text-slate-900">{job.title}</h3>
+                          {job.is_remote && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-[var(--blue)] border border-blue-200">
+                              Remote
+                            </span>
+                          )}
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 capitalize">
+                            {job.employment_type}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-500">
+                          {job.company_name} • {job.location}
+                        </p>
+                      </div>
+
+                      {/* Match Score Gauge */}
+                      <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2">
+                        <div
+                          className={`px-4 py-2 rounded-2xl border text-center flex items-center gap-2 ${scoreColor}`}
+                        >
+                          <span className="text-xl font-black">{job.match.score}%</span>
+                          <span className="text-[11px] font-bold uppercase tracking-wide">Match</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          Threshold: {job.min_match_threshold}% •{" "}
+                          {job.match.meetsThreshold ? (
+                            <strong className="text-emerald-600">Eligible</strong>
+                          ) : (
+                            <strong className="text-red-500">Under</strong>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Salary & Description */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-y border-slate-100 text-xs">
+                      <div className="flex items-center gap-2 text-slate-700">
+                        <span className="font-semibold text-slate-400">Transparent Compensation:</span>
+                        <span className="font-extrabold text-slate-900">
+                          ₹{job.salary_min?.toLocaleString("en-IN")} - ₹{job.salary_max?.toLocaleString("en-IN")}{" "}
+                          / year
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Posted {new Date(job.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-600 leading-relaxed">{job.description}</p>
+
+                    {/* Explainable Skill Breakdown */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/70 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-extrabold text-slate-800">
+                          Skill Breakdown & Match Explanation
+                        </h4>
+                        <span className="text-[11px] text-slate-500">{job.match.explanation}</span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {/* Matched Skills */}
+                        {job.match.matchedSkills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-100/70 text-emerald-800 font-semibold text-[11px]"
+                          >
+                            <span>✓</span> {skill}
+                          </span>
+                        ))}
+
+                        {/* Missing Required Skills */}
+                        {job.match.missingRequiredSkills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-rose-100 text-rose-700 font-semibold text-[11px]"
+                            title="Required skill missing"
+                          >
+                            <span>✕</span> {skill} (Required)
+                          </span>
+                        ))}
+
+                        {/* Missing Preferred Skills */}
+                        {job.match.missingPreferredSkills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-200/80 text-slate-600 text-[11px]"
+                            title="Preferred skill missing"
+                          >
+                            <span>○</span> {skill} (Preferred)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      {isApplied ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
+                            Application Submitted ✓
+                          </span>
+                          <button
+                            onClick={() => setActiveTab("applications")}
+                            className="text-xs text-[var(--blue)] font-bold hover:underline"
+                          >
+                            View Tracker
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleApplyToJob(job)}
+                          className={`py-2 px-5 rounded-xl font-bold text-xs transition ${
+                            job.match.meetsThreshold
+                              ? "bg-[var(--blue)] text-white hover:opacity-90 shadow-sm"
+                              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                          }`}
+                        >
+                          {job.match.meetsThreshold ? "1-Click Apply Now" : "Apply Anyway"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {displayedJobs.length === 0 && (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                  <span className="text-3xl block mb-2">🔍</span>
+                  <p className="text-sm font-bold text-slate-700">No matching jobs found</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Try unchecking the filters or add more skills in your profile.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: APPLICATION TRACKER */}
+        {activeTab === "applications" && (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">
+                    Transparent Application Audit Tracker
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Every candidate interaction is logged with exact match scores and employer read receipts.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-600">
+                  {applications.length} Active Applications
+                </span>
+              </div>
+
+              {applications.length === 0 ? (
+                <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                  <span className="text-3xl block mb-2">📬</span>
+                  <p className="text-xs font-bold text-slate-700">No applications submitted yet</p>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Explore matched opportunities and apply with 1-click.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab("matches")}
+                    className="py-2 px-4 rounded-xl text-xs font-bold bg-[var(--blue)] text-white"
+                  >
+                    Explore Job Matches
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {applications.map((app) => {
+                    const steps: { key: ApplicationStatus; label: string }[] = [
+                      { key: "submitted", label: "Submitted" },
+                      { key: "viewed", label: "Viewed by Employer" },
+                      { key: "shortlisted", label: "Shortlisted" },
+                      { key: "interview_scheduled", label: "Interview Scheduled" },
+                    ];
+
+                    const statusIndex = steps.findIndex((s) => s.key === app.status);
+
+                    return (
+                      <div
+                        key={app.id}
+                        className="p-5 rounded-2xl border border-slate-200 bg-white space-y-4 shadow-xs"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900">{app.jobTitle}</h3>
+                            <p className="text-xs text-slate-500">
+                              {app.companyName} • {app.location}
+                            </p>
+                            <p className="text-xs font-semibold text-slate-700 mt-1">
+                              {app.salaryText}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="px-3 py-1.5 rounded-xl bg-blue-50 text-[var(--blue)] font-bold text-xs border border-blue-200">
+                              {app.matchScore}% Match at Application
+                            </div>
+                            <button
+                              onClick={() => handleAdvanceStatus(app.id)}
+                              className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                              title="Simulate Employer Status Change"
+                            >
+                              Simulate Progress ➔
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Progress Stepper Bar */}
+                        <div className="pt-2">
+                          <div className="grid grid-cols-4 gap-2 text-center">
+                            {steps.map((step, idx) => {
+                              const isCompleted = statusIndex >= idx;
+                              const isCurrent = statusIndex === idx;
+
+                              return (
+                                <div key={step.key} className="space-y-1.5">
+                                  <div
+                                    className={`h-2 rounded-full transition ${
+                                      isCompleted
+                                        ? "bg-emerald-500"
+                                        : "bg-slate-200"
+                                    }`}
+                                  />
+                                  <span
+                                    className={`text-[10px] block font-bold truncate ${
+                                      isCurrent
+                                        ? "text-emerald-700"
+                                        : isCompleted
+                                        ? "text-slate-800"
+                                        : "text-slate-400"
+                                    }`}
+                                  >
+                                    {step.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Audit Details */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-[11px] text-slate-400 border-t border-slate-100">
+                          <span>Applied on: {new Date(app.appliedAt).toLocaleString()}</span>
+                          {app.viewedAt ? (
+                            <span className="text-emerald-600 font-semibold">
+                              Employer read receipt: {new Date(app.viewedAt).toLocaleTimeString()}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">Awaiting employer review</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
