@@ -52,10 +52,13 @@ export default function Header() {
             priority
           />
           <span
-            className="font-bold text-xl tracking-tight"
+            className="font-bold text-xl tracking-tight flex items-center gap-2"
             style={{ color: "var(--navy)" }}
           >
             SBJFP
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium border border-slate-200">
+              v1.0.1
+            </span>
           </span>
         </Link>
 

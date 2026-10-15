@@ -65,8 +65,9 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="border-t border-slate-700 pt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <p className="text-slate-400 text-xs text-center sm:text-left">
+          <p className="text-slate-400 text-xs text-center sm:text-left flex items-center gap-2">
             © {new Date().getFullYear()} SBJFP — Skill-Based Job Finding Platform. All rights reserved.
+            <span className="font-mono text-slate-500 text-[11px]">v1.0.1</span>
           </p>
           <p className="text-slate-500 text-xs text-center">
             🚧 Platform in development — features described reflect planned functionality.
