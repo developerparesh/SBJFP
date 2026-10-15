@@ -12,7 +12,7 @@ export type ProficiencyLevel = "beginner" | "intermediate" | "advanced" | "exper
 export type EmploymentType = "full-time" | "part-time" | "contract" | "remote" | "internship";
 export type SalaryPeriod = "yearly" | "monthly" | "hourly";
 export type JobStatus = "draft" | "published" | "closed";
-export type ApplicationStatus = "submitted" | "viewed" | "shortlisted" | "interview_scheduled" | "rejected" | "accepted";
+export type ApplicationStatus = "submitted" | "viewed" | "shortlisted" | "interview_scheduled" | "rejected" | "accepted" | "offered";
 
 export type ExperienceLevel = "fresher" | "1-3_years" | "3-5_years" | "5+_years" | "any";
 

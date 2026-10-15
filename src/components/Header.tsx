@@ -4,10 +4,17 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import {
+  getStoredNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+} from "@/lib/notificationsData";
+import { AppNotification } from "@/types/notification";
 
 const navLinks = [
   { label: "Home", href: "/" },
   { label: "Find Jobs", href: "/jobs" },
+  { label: "Interview Hub", href: "/interviews" },
   { label: "For Employers", href: "/#for-employers" },
   { label: "How It Works", href: "/#how-it-works" },
 ];
@@ -15,7 +22,28 @@ const navLinks = [
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const { user, profile, signOut, loading } = useAuth();
+
+  useEffect(() => {
+    setNotifications(getStoredNotifications());
+  }, []);
+
+  const unreadCount = notifications.filter(
+    (n) => !n.read && (profile?.role ? n.role === profile.role || n.role === "all" : true)
+  ).length;
+
+  const handleMarkAllRead = () => {
+    const updated = markAllNotificationsAsRead(profile?.role);
+    setNotifications(updated);
+  };
+
+  const handleNotificationClick = (id: string) => {
+    const updated = markNotificationAsRead(id);
+    setNotifications(updated);
+    setNotificationsOpen(false);
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -82,6 +110,99 @@ export default function Header() {
 
         {/* Desktop CTA buttons */}
         <div className="hidden md:flex items-center gap-3">
+          {/* In-App Notifications Bell */}
+          <div className="relative">
+            <button
+              onClick={() => setNotificationsOpen((prev) => !prev)}
+              className="p-2 rounded-lg text-slate-600 hover:text-[#102A43] hover:bg-slate-100 transition relative"
+              title="Notifications"
+              aria-label="View notifications"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Dropdown Panel */}
+            {notificationsOpen && (
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-slate-900">Notifications</span>
+                    {unreadCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
+                        {unreadCount} new
+                      </span>
+                    )}
+                  </div>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                  {notifications.length > 0 ? (
+                    notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => handleNotificationClick(n.id)}
+                        className={`p-3.5 hover:bg-slate-50 transition cursor-pointer flex items-start gap-3 ${
+                          !n.read ? "bg-blue-50/40" : ""
+                        }`}
+                      >
+                        <span className="text-xl flex-shrink-0 mt-0.5">
+                          {n.type === "shortlist" ? "🎉" : n.type === "interview_booked" ? "📅" : n.type === "new_match" ? "🎯" : "ℹ️"}
+                        </span>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-slate-900">{n.title}</h4>
+                            {!n.read && <span className="w-2 h-2 rounded-full bg-blue-600" />}
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
+                            {n.message}
+                          </p>
+                          {n.actionUrl && (
+                            <Link
+                              href={n.actionUrl}
+                              className="inline-block mt-2 text-[11px] font-semibold text-blue-600 hover:text-blue-800"
+                            >
+                              View details →
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-6 text-center text-xs text-slate-400">
+                      No notifications right now.
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-center">
+                  <Link
+                    href="/dashboard/candidate"
+                    onClick={() => setNotificationsOpen(false)}
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                  >
+                    View all in Dashboard
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+
           {!loading && user ? (
             <>
               <Link

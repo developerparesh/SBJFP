@@ -22,6 +22,7 @@ import {
   ExperienceLevel,
 } from "@/types/database";
 import { getStoredInterviewSlots, saveStoredInterviewSlots } from "@/lib/interviewSlotsData";
+import { extractSkillsFromText, ExtractedSkillResult } from "@/lib/skillExtractor";
 
 interface SavedApplication {
   id: string;
@@ -94,6 +95,65 @@ export default function CandidateDashboardPage() {
 
   // Modal / Toast Notification
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Skill Auto-Extractor State
+  const [isExtractorOpen, setIsExtractorOpen] = useState(false);
+  const [extractorText, setExtractorText] = useState("");
+  const [extractedResult, setExtractedResult] = useState<ExtractedSkillResult | null>(null);
+
+  const handleScanSkills = () => {
+    if (!extractorText.trim()) {
+      showToast("Please paste your resume, GitHub summary, or project text first.");
+      return;
+    }
+    const result = extractSkillsFromText(extractorText);
+    setExtractedResult(result);
+    if (result.skills.length === 0) {
+      showToast("No recognized canonical skills found. Try mentioning languages, frameworks, or databases.");
+    } else {
+      showToast(`Detected ${result.skills.length} skills from your text!`);
+    }
+  };
+
+  const handleApplyExtractedSkills = () => {
+    if (!extractedResult || extractedResult.skills.length === 0) return;
+
+    // Merge skills avoiding duplicates
+    const existingMap = new Map(candidateSkills.map((s) => [s.skillName.toLowerCase(), s]));
+    extractedResult.skills.forEach((s) => {
+      existingMap.set(s.skillName.toLowerCase(), s);
+    });
+    const merged = Array.from(existingMap.values());
+    setCandidateSkills(merged);
+
+    // If experience or qualification was detected, apply it too
+    let newExpLevel = candidateExpLevel;
+    if (extractedResult.suggestedYearsExperience === 0) {
+      newExpLevel = "fresher";
+    } else if (extractedResult.suggestedYearsExperience >= 5) {
+      newExpLevel = "5+_years";
+    } else if (extractedResult.suggestedYearsExperience >= 3) {
+      newExpLevel = "3-5_years";
+    } else {
+      newExpLevel = "1-3_years";
+    }
+
+    let newQual = candidateQualification;
+    if (extractedResult.suggestedQualification) {
+      newQual = extractedResult.suggestedQualification;
+    }
+
+    saveEducation(newExpLevel, newQual, candidateCollege, candidateGradYear);
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sbjfp_candidate_skills", JSON.stringify(merged));
+    }
+
+    setIsExtractorOpen(false);
+    setExtractorText("");
+    setExtractedResult(null);
+    showToast(`Successfully added ${extractedResult.skills.length} skills to your profile!`);
+  };
 
   // Load from LocalStorage if available
   useEffect(() => {
@@ -396,7 +456,8 @@ export default function CandidateDashboardPage() {
       submitted: "viewed",
       viewed: "shortlisted",
       shortlisted: "interview_scheduled",
-      interview_scheduled: "accepted",
+      interview_scheduled: "offered",
+      offered: "accepted",
       accepted: "accepted",
       rejected: "rejected",
     };
@@ -693,6 +754,121 @@ export default function CandidateDashboardPage() {
                   </select>
                 </div>
               </div>
+            </div>
+
+            {/* 1.5. Skill Auto-Extractor Card */}
+            <div className="bg-gradient-to-r from-blue-900/10 via-indigo-900/10 to-emerald-900/10 p-5 rounded-2xl border border-blue-200/60 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--blue)] text-white flex items-center justify-center text-xl font-bold shadow-md shadow-blue-500/20">
+                    ✨
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                      Auto-Extract Skills from Resume / Bio / GitHub
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-[var(--blue)]">
+                        AI-Powered
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Paste your resume summary, LinkedIn bio, or project description to auto-populate your skills in seconds.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsExtractorOpen(!isExtractorOpen)}
+                  className="px-4 py-2 text-xs font-bold rounded-xl text-white bg-[var(--blue)] hover:bg-blue-600 transition shadow-sm self-start sm:self-auto"
+                >
+                  {isExtractorOpen ? "Hide Extractor ▲" : "Paste Resume / Bio ▼"}
+                </button>
+              </div>
+
+              {/* Expandable Extractor Form */}
+              {isExtractorOpen && (
+                <div className="mt-4 pt-4 border-t border-slate-200/80 space-y-4 animate-in fade-in duration-200">
+                  <textarea
+                    rows={4}
+                    value={extractorText}
+                    onChange={(e) => setExtractorText(e.target.value)}
+                    placeholder="Paste resume text, GitHub summary, or project stack... e.g. 'Software Engineer with 3 years experience in React, Next.js, TypeScript, PostgreSQL, and Git. Completed B.Tech in CSE.'"
+                    className="w-full p-3 rounded-xl border border-slate-300 text-xs font-mono bg-white text-slate-800 focus:ring-2 focus:ring-[var(--blue)] focus:outline-none"
+                  />
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleScanSkills}
+                        className="px-4 py-2 bg-[var(--navy)] hover:bg-slate-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow"
+                      >
+                        <span>⚡</span> Scan & Extract Skills
+                      </button>
+                      <button
+                        onClick={() => {
+                          setExtractorText(
+                            "Software developer with 2+ years of experience building modern web apps. Tech stack: React, Next.js, TypeScript, Node.js, Tailwind CSS, PostgreSQL, and Git. Graduated with B.Tech in Computer Science."
+                          );
+                        }}
+                        className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-semibold rounded-xl text-xs transition"
+                      >
+                        Load Sample Text
+                      </button>
+                    </div>
+
+                    {extractorText && (
+                      <button
+                        onClick={() => {
+                          setExtractorText("");
+                          setExtractedResult(null);
+                        }}
+                        className="text-xs text-slate-400 hover:text-slate-600"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Extraction Preview Results */}
+                  {extractedResult && (
+                    <div className="p-4 rounded-xl bg-white border border-emerald-300 shadow-sm space-y-3 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                          <span>✓</span> Extracted {extractedResult.skills.length} Canonical Skills
+                        </span>
+                        <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                          <span>Exp: {extractedResult.suggestedYearsExperience} yrs</span>
+                          {extractedResult.suggestedQualification && (
+                            <span>• {extractedResult.suggestedQualification}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {extractedResult.skills.map((s) => (
+                          <span
+                            key={s.skillName}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                          >
+                            <span>✓</span> {s.skillName}
+                            <span className="text-[10px] text-emerald-600 font-normal">
+                              ({s.proficiency}, {s.yearsExperience}y)
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="pt-2 flex justify-end">
+                        <button
+                          onClick={handleApplyExtractedSkills}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center gap-1.5"
+                        >
+                          <span>✅</span> Apply to Profile & Re-Calculate Matches
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 2. Quick Presets Bar */}
