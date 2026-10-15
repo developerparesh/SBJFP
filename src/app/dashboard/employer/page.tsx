@@ -6,7 +6,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { PRESET_SKILLS, SKILL_CATEGORIES } from "@/lib/skillsData";
-import { ApplicationStatus, EmploymentType } from "@/types/database";
+import { ApplicationStatus, EmploymentType, InterviewSlot } from "@/types/database";
+import { getStoredInterviewSlots, saveStoredInterviewSlots } from "@/lib/interviewSlotsData";
 
 interface EmployerJob {
   id: string;
@@ -42,7 +43,7 @@ export default function EmployerDashboardPage() {
   const router = useRouter();
   const { user, profile, loading, signOut } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<"jobs" | "create" | "pipeline">("jobs");
+  const [activeTab, setActiveTab] = useState<"jobs" | "create" | "pipeline" | "interviews">("jobs");
 
   // Posted Jobs
   const [jobs, setJobs] = useState<EmployerJob[]>([
@@ -105,7 +106,7 @@ export default function EmployerDashboardPage() {
       matchedSkills: ["Kotlin", "Jetpack Compose", "REST APIs", "Room DB", "Git & GitHub"],
       missingRequired: [],
       missingPreferred: ["Hilt / Dagger"],
-      status: "viewed",
+      status: "shortlisted",
       appliedAt: new Date(Date.now() - 86400000).toISOString(),
       viewedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
     },
@@ -131,11 +132,27 @@ export default function EmployerDashboardPage() {
       matchedSkills: ["TypeScript", "Next.js", "React", "Supabase", "Tailwind CSS"],
       missingRequired: [],
       missingPreferred: ["PostgreSQL"],
-      status: "shortlisted",
+      status: "interview_scheduled",
       appliedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
       viewedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
     },
   ]);
+
+  // Interview Slots State
+  const [interviewSlots, setInterviewSlots] = useState<InterviewSlot[]>([]);
+
+  // Slot Form State
+  const [slotJobId, setSlotJobId] = useState<string>("job-android-001");
+  const [slotDate, setSlotDate] = useState<string>("Tomorrow (Oct 16, 2026)");
+  const [slotTime, setSlotTime] = useState<string>("10:30 AM - 11:15 AM IST");
+  const [slotDuration, setSlotDuration] = useState<number>(45);
+  const [slotMeetingLink, setSlotMeetingLink] = useState<string>("https://meet.google.com/sbj-meet-new");
+  const [slotNotes, setSlotNotes] = useState<string>("Round 1: Technical Architecture & Problem Solving");
+
+  // Load Interview Slots from storage
+  useEffect(() => {
+    setInterviewSlots(getStoredInterviewSlots());
+  }, []);
 
   // Create Job Form State
   const [formTitle, setFormTitle] = useState("");
@@ -249,10 +266,42 @@ export default function EmployerDashboardPage() {
     setJobs([newJob, ...jobs]);
     showToast(`Role "${newJob.title}" posted successfully with ${formRequirements.length} skill requirements!`);
 
-    // Reset Form
     setFormTitle("");
     setFormDesc("");
     setActiveTab("jobs");
+  };
+
+  // Handle Add Interview Slot
+  const handleAddInterviewSlot = (e: React.FormEvent) => {
+    e.preventDefault();
+    const matchedJob = jobs.find((j) => j.id === slotJobId);
+    const newSlot: InterviewSlot = {
+      id: `slot-${Date.now()}`,
+      job_id: slotJobId,
+      job_title: matchedJob ? matchedJob.title : "Technical Role",
+      date: slotDate.trim(),
+      time: slotTime.trim(),
+      duration_minutes: slotDuration,
+      meeting_link: slotMeetingLink.trim(),
+      notes: slotNotes.trim(),
+      status: "available",
+      candidate_id: null,
+      candidate_name: null,
+      created_at: new Date().toISOString(),
+    };
+
+    const updated = [newSlot, ...interviewSlots];
+    setInterviewSlots(updated);
+    saveStoredInterviewSlots(updated);
+    showToast(`Interview slot added for ${newSlot.job_title}!`);
+  };
+
+  // Delete Slot
+  const handleDeleteSlot = (slotId: string) => {
+    const updated = interviewSlots.filter((s) => s.id !== slotId);
+    setInterviewSlots(updated);
+    saveStoredInterviewSlots(updated);
+    showToast("Interview slot removed.");
   };
 
   // Update Applicant Status in Pipeline
@@ -286,6 +335,9 @@ export default function EmployerDashboardPage() {
     const matchSearch = s.name.toLowerCase().includes(searchSkill.toLowerCase().trim());
     return matchCat && matchSearch;
   });
+
+  const bookedSlotsCount = interviewSlots.filter((s) => s.status === "booked").length;
+  const availableSlotsCount = interviewSlots.filter((s) => s.status === "available").length;
 
   return (
     <div className="min-h-screen bg-[var(--bg)] flex flex-col font-sans">
@@ -337,13 +389,13 @@ export default function EmployerDashboardPage() {
         >
           <div>
             <span className="text-[11px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-white/10 text-[var(--mint)] mb-3 inline-block">
-              Phase 5: Employer Experience & Structured Job Management
+              Employer / HR Suite & Interview Scheduling
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold mb-2">
               {profile?.companyName ? `${profile.companyName} Hiring Suite` : "Employer Hiring Suite"}
             </h1>
             <p className="text-slate-300 text-xs sm:text-sm max-w-xl leading-relaxed">
-              Post roles with explicit skill requirements and transparent compensation. Screen applicants using deterministic match scores instead of opaque keyword filters.
+              Post roles with explicit skill requirements, screen candidates transparently, and offer interview slots that candidates can self-select directly.
             </p>
           </div>
 
@@ -358,9 +410,9 @@ export default function EmployerDashboardPage() {
             </div>
             <div className="text-center">
               <span className="block text-2xl font-black text-amber-300">
-                {applicants.filter((a) => a.matchScore >= 75).length}
+                {interviewSlots.length}
               </span>
-              <span className="text-[10px] text-slate-300 uppercase tracking-wide">High Fit (≥75%)</span>
+              <span className="text-[10px] text-slate-300 uppercase tracking-wide">Interview Slots</span>
             </div>
           </div>
         </div>
@@ -403,6 +455,20 @@ export default function EmployerDashboardPage() {
             <span>👥 Candidate Pipeline</span>
             <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-700">
               {applicants.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("interviews")}
+            className={`py-3 px-5 text-sm font-bold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+              activeTab === "interviews"
+                ? "border-[var(--blue)] text-[var(--blue)] bg-white rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <span>📅 Interview Slots (HR)</span>
+            <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-extrabold">
+              {availableSlotsCount} open / {bookedSlotsCount} booked
             </span>
           </button>
         </div>
@@ -468,6 +534,15 @@ export default function EmployerDashboardPage() {
                           <span className="px-1.5 py-0.2 rounded-full bg-[var(--navy)] text-white text-[10px]">
                             {jobApplicants.length}
                           </span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSlotJobId(job.id);
+                            setActiveTab("interviews");
+                          }}
+                          className="py-1.5 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold transition border border-purple-200"
+                        >
+                          📅 Add Slots
                         </button>
                       </div>
                     </div>
@@ -535,7 +610,6 @@ export default function EmployerDashboardPage() {
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Title */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">Role Title *</label>
                 <input
@@ -548,7 +622,6 @@ export default function EmployerDashboardPage() {
                 />
               </div>
 
-              {/* Employment Type */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">Employment Type</label>
                 <select
@@ -563,7 +636,6 @@ export default function EmployerDashboardPage() {
                 </select>
               </div>
 
-              {/* Location */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">Location</label>
                 <input
@@ -575,7 +647,6 @@ export default function EmployerDashboardPage() {
                 />
               </div>
 
-              {/* Remote Checkbox */}
               <div className="flex items-center gap-3 pt-6">
                 <input
                   type="checkbox"
@@ -589,7 +660,6 @@ export default function EmployerDashboardPage() {
                 </label>
               </div>
 
-              {/* Salary Range */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">Minimum Annual Salary (₹ INR) *</label>
                 <input
@@ -614,7 +684,6 @@ export default function EmployerDashboardPage() {
                 />
               </div>
 
-              {/* Match Threshold Slider */}
               <div className="md:col-span-2 space-y-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-slate-800">
@@ -635,7 +704,6 @@ export default function EmployerDashboardPage() {
                 />
               </div>
 
-              {/* Description */}
               <div className="md:col-span-2 space-y-1">
                 <label className="text-xs font-bold text-slate-700">Role Description</label>
                 <textarea
@@ -660,7 +728,6 @@ export default function EmployerDashboardPage() {
                 </p>
               </div>
 
-              {/* Available Skills Chips */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <input
@@ -719,7 +786,6 @@ export default function EmployerDashboardPage() {
                 </div>
               </div>
 
-              {/* Active Requirements List */}
               <div className="space-y-2">
                 {formRequirements.map((req) => (
                   <div
@@ -729,7 +795,6 @@ export default function EmployerDashboardPage() {
                     <span className="font-bold text-slate-900">{req.skillName}</span>
 
                     <div className="flex items-center gap-3">
-                      {/* Required / Preferred Toggle */}
                       <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-100">
                         <button
                           type="button"
@@ -751,7 +816,6 @@ export default function EmployerDashboardPage() {
                         </button>
                       </div>
 
-                      {/* Years */}
                       <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white">
                         <button
                           type="button"
@@ -772,7 +836,6 @@ export default function EmployerDashboardPage() {
                         </button>
                       </div>
 
-                      {/* Delete */}
                       <button
                         type="button"
                         onClick={() => handleToggleFormSkill(req.skillName)}
@@ -786,7 +849,6 @@ export default function EmployerDashboardPage() {
               </div>
             </div>
 
-            {/* Submit */}
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
               <button
                 type="button"
@@ -923,7 +985,17 @@ export default function EmployerDashboardPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-500 font-semibold">Stage:</span>
+                        <button
+                          onClick={() => {
+                            setSlotJobId(app.jobId);
+                            setActiveTab("interviews");
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 font-bold text-xs border border-purple-200 hover:bg-purple-100 transition"
+                        >
+                          📅 Offer Interview Slot
+                        </button>
+
+                        <span className="text-slate-500 font-semibold ml-2">Stage:</span>
                         <select
                           value={app.status}
                           onChange={(e) =>
@@ -950,6 +1022,232 @@ export default function EmployerDashboardPage() {
                   <p className="text-xs font-bold text-slate-700">No applicants matching filter</p>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: INTERVIEW SLOTS (HR) */}
+        {activeTab === "interviews" && (
+          <div className="space-y-8">
+            {/* Top Explainer */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900">
+                  HR Interview Slots & Scheduling
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Add available interview slots for your roles. Candidates will see these slots in their portal and choose their preferred time.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 font-bold">
+                  {availableSlotsCount} Open Slots
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold">
+                  {bookedSlotsCount} Booked by Candidates
+                </span>
+              </div>
+            </div>
+
+            <div className="grid lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Create Interview Slot Form */}
+              <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="border-b border-slate-100 pb-3">
+                  <h3 className="text-sm font-extrabold text-slate-900">➕ Add New Interview Slot</h3>
+                  <p className="text-xs text-slate-500">
+                    Offer a time window for technical screening or hiring manager rounds.
+                  </p>
+                </div>
+
+                <form onSubmit={handleAddInterviewSlot} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Target Role *</label>
+                    <select
+                      value={slotJobId}
+                      onChange={(e) => setSlotJobId(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold text-slate-800 bg-white"
+                    >
+                      {jobs.map((j) => (
+                        <option key={j.id} value={j.id}>
+                          {j.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Date *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Tomorrow (Oct 16, 2026)"
+                      value={slotDate}
+                      onChange={(e) => setSlotDate(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Time Slot *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 10:30 AM - 11:15 AM"
+                        value={slotTime}
+                        onChange={(e) => setSlotTime(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Duration</label>
+                      <select
+                        value={slotDuration}
+                        onChange={(e) => setSlotDuration(Number(e.target.value))}
+                        className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold bg-white"
+                      >
+                        <option value={30}>30 mins</option>
+                        <option value={45}>45 mins</option>
+                        <option value={60}>60 mins</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Meeting Link (Google Meet / Zoom)</label>
+                    <input
+                      type="url"
+                      placeholder="https://meet.google.com/..."
+                      value={slotMeetingLink}
+                      onChange={(e) => setSlotMeetingLink(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Agenda / Interviewer Notes</label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Technical live coding & architecture evaluation"
+                      value={slotNotes}
+                      onChange={(e) => setSlotNotes(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 px-4 rounded-xl font-bold bg-[var(--blue)] text-white hover:opacity-90 transition shadow-sm"
+                  >
+                    Publish Interview Slot
+                  </button>
+                </form>
+              </div>
+
+              {/* Right Column: Existing Slots List */}
+              <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900">
+                      Offered Interview Slots ({interviewSlots.length})
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Review open slots or confirmed bookings made by candidates.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1">
+                  {interviewSlots.map((slot) => {
+                    const isBooked = slot.status === "booked";
+
+                    return (
+                      <div
+                        key={slot.id}
+                        className={`p-4 rounded-xl border transition ${
+                          isBooked
+                            ? "bg-emerald-50/50 border-emerald-300"
+                            : "bg-slate-50/70 border-slate-200"
+                        } space-y-3`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-xs text-slate-900">
+                                {slot.job_title}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                  isBooked
+                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                    : "bg-purple-100 text-purple-700 border border-purple-200"
+                                }`}
+                              >
+                                {isBooked ? "Confirmed by Candidate" : "Open / Available"}
+                              </span>
+                            </div>
+                            <p className="text-xs font-semibold text-slate-700 mt-1">
+                              📅 {slot.date} • ⏰ {slot.time} ({slot.duration_minutes}m)
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteSlot(slot.id)}
+                            className="text-xs text-slate-400 hover:text-red-500 font-bold self-start"
+                            title="Cancel slot"
+                          >
+                            ✕ Remove
+                          </button>
+                        </div>
+
+                        {/* Candidate Booking Info or Open Note */}
+                        {isBooked ? (
+                          <div className="p-2.5 bg-emerald-100/60 rounded-lg text-xs flex items-center justify-between">
+                            <span className="font-bold text-emerald-900">
+                              Booked by: {slot.candidate_name || "Shortlisted Candidate"}
+                            </span>
+                            {slot.meeting_link && (
+                              <a
+                                href={slot.meeting_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2.5 py-1 rounded-md bg-emerald-700 text-white font-bold text-[11px] hover:bg-emerald-800"
+                              >
+                                Join Video Call →
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-500 flex items-center justify-between">
+                            <span>Awaiting candidate selection in Candidate Portal</span>
+                            {slot.meeting_link && (
+                              <span className="text-slate-400 font-mono text-[10px] truncate max-w-[200px]">
+                                {slot.meeting_link}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {slot.notes && (
+                          <p className="text-[11px] text-slate-500 italic bg-white/70 p-2 rounded-lg border border-slate-100">
+                            Agenda: {slot.notes}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {interviewSlots.length === 0 && (
+                    <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl">
+                      <span className="text-2xl block mb-2">📅</span>
+                      <p className="text-xs font-bold text-slate-700">No interview slots created yet</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Use the form on the left to offer interview slots to shortlisted candidates.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}

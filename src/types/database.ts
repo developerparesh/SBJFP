@@ -89,3 +89,22 @@ export interface JobApplication {
   job?: Job;
   candidate?: Profile;
 }
+
+export type SlotStatus = "available" | "booked" | "completed" | "cancelled";
+
+export interface InterviewSlot {
+  id: string;
+  job_id: string;
+  job_title: string;
+  employer_id?: string;
+  candidate_id?: string | null;
+  candidate_name?: string | null;
+  date: string; // e.g. "2026-10-18"
+  time: string; // e.g. "10:30 AM - 11:15 AM"
+  duration_minutes: number;
+  meeting_link?: string;
+  notes?: string;
+  status: SlotStatus;
+  created_at: string;
+}
+
