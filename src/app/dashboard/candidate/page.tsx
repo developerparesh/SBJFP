@@ -23,6 +23,18 @@ import {
 } from "@/types/database";
 import { getStoredInterviewSlots, saveStoredInterviewSlots } from "@/lib/interviewSlotsData";
 import { extractSkillsFromText, ExtractedSkillResult } from "@/lib/skillExtractor";
+import {
+  SKILL_QUIZZES,
+  getVerifiedSkills,
+  saveVerifiedSkill,
+  SkillQuiz,
+} from "@/lib/assessmentData";
+import {
+  INITIAL_OFFERS,
+  getStoredOffers,
+  acceptJobOffer,
+  JobOffer,
+} from "@/lib/offersData";
 
 interface SavedApplication {
   id: string;
@@ -95,6 +107,63 @@ export default function CandidateDashboardPage() {
 
   // Modal / Toast Notification
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Verified Skills & Assessment State
+  const [verifiedSkills, setVerifiedSkills] = useState<string[]>([]);
+  const [activeQuiz, setActiveQuiz] = useState<SkillQuiz | null>(null);
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
+  const [quizResult, setQuizResult] = useState<{ passed: boolean; score: number; total: number } | null>(null);
+
+  // Job Offers State
+  const [jobOffers, setJobOffers] = useState<Record<string, JobOffer>>({});
+  const [activeOffer, setActiveOffer] = useState<JobOffer | null>(null);
+
+  const handleStartQuiz = (skillName: string) => {
+    const quiz = SKILL_QUIZZES[skillName];
+    if (!quiz) {
+      showToast(`Assessment for ${skillName} is coming soon!`);
+      return;
+    }
+    setActiveQuiz(quiz);
+    setQuizAnswers({});
+    setQuizResult(null);
+  };
+
+  const handleSubmitQuiz = () => {
+    if (!activeQuiz) return;
+    let score = 0;
+    activeQuiz.questions.forEach((q, idx) => {
+      if (quizAnswers[idx] === q.correctIndex) {
+        score += 1;
+      }
+    });
+
+    const passed = score >= activeQuiz.passingScore;
+    setQuizResult({ passed, score, total: activeQuiz.questions.length });
+
+    if (passed) {
+      const updated = saveVerifiedSkill(activeQuiz.skillName);
+      setVerifiedSkills(updated);
+      showToast(`🎉 Congratulations! You earned a Verified Skill Badge for ${activeQuiz.skillName}!`);
+    } else {
+      showToast(`You scored ${score}/${activeQuiz.questions.length}. Need ${activeQuiz.passingScore} to pass. Try again!`);
+    }
+  };
+
+  const handleAcceptOffer = (appId: string) => {
+    const accepted = acceptJobOffer(appId);
+    if (accepted) {
+      setJobOffers(getStoredOffers());
+      setActiveOffer(accepted);
+      // Also update application status
+      const updated = applications.map((a) => (a.id === appId ? { ...a, status: "accepted" as ApplicationStatus } : a));
+      setApplications(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sbjfp_applications", JSON.stringify(updated));
+      }
+      showToast(`🎉 Congratulations on accepting your offer at ${accepted.companyName}!`);
+    }
+  };
 
   // Skill Auto-Extractor State
   const [isExtractorOpen, setIsExtractorOpen] = useState(false);
@@ -193,6 +262,8 @@ export default function CandidateDashboardPage() {
         }
       }
       setInterviewSlots(getStoredInterviewSlots());
+      setVerifiedSkills(getVerifiedSkills());
+      setJobOffers(getStoredOffers());
     }
   }, []);
 
@@ -544,6 +615,12 @@ export default function CandidateDashboardPage() {
                 {candidateExpLevel === "fresher" ? "Fresher (0 yrs)" : "Experienced"} • {candidateQualification}
               </p>
             </div>
+            <Link
+              href="/resume"
+              className="py-1.5 px-3 text-xs font-bold rounded-lg bg-blue-50 text-[var(--blue)] border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1.5"
+            >
+              <span>📄</span> Export Resume
+            </Link>
             <button
               onClick={async () => {
                 await signOut();
@@ -1025,6 +1102,18 @@ export default function CandidateDashboardPage() {
                             <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-200 text-slate-600">
                               {s.category}
                             </span>
+                            {verifiedSkills.includes(s.skillName) ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                <span>🏅</span> Verified
+                              </span>
+                            ) : SKILL_QUIZZES[s.skillName] ? (
+                              <button
+                                onClick={() => handleStartQuiz(s.skillName)}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-[var(--blue)] border border-blue-200 hover:bg-blue-100 transition flex items-center gap-1"
+                              >
+                                <span>🏅</span> Take Quiz
+                              </button>
+                            ) : null}
                           </div>
                         </div>
 
@@ -1561,6 +1650,38 @@ export default function CandidateDashboardPage() {
                           </div>
                         )}
 
+                        {/* Offer Letter & Compensation Section */}
+                        {(app.status === "offered" || app.status === "accepted") && (
+                          <div className="p-4 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-2xl">🎉</span>
+                                <div>
+                                  <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">
+                                    {app.status === "accepted"
+                                      ? "Job Offer Accepted! 🚀"
+                                      : "Official Job Offer Received!"}
+                                  </h4>
+                                  <p className="text-xs text-amber-800 mt-0.5">
+                                    {app.companyName} has extended a formal employment offer for {app.jobTitle}.
+                                  </p>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const offer = jobOffers[app.id] || INITIAL_OFFERS["app-001"];
+                                  setActiveOffer(offer);
+                                }}
+                                className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2 self-start sm:self-auto"
+                              >
+                                <span>📄</span> View Full Compensation Breakdown →
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Audit Details */}
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-[11px] text-slate-400 border-t border-slate-100">
                           <span>Applied on: {new Date(app.appliedAt).toLocaleString()}</span>
@@ -1577,6 +1698,252 @@ export default function CandidateDashboardPage() {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 1: SKILL VERIFICATION QUIZ */}
+        {activeQuiz && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--blue)] flex items-center gap-1.5">
+                    <span>🏅</span> Verified Skill Assessment
+                  </span>
+                  <h3 className="text-xl font-extrabold text-slate-900 mt-0.5">
+                    {activeQuiz.skillName} Knowledge Check
+                  </h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setActiveQuiz(null);
+                    setQuizResult(null);
+                  }}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold flex items-center justify-center text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {!quizResult ? (
+                <div className="space-y-6">
+                  <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200/60 text-xs text-blue-900 flex items-center justify-between">
+                    <span>Answer {activeQuiz.passingScore} of {activeQuiz.questions.length} questions correctly to earn your badge.</span>
+                    <span className="font-mono font-bold text-blue-700">3 Questions</span>
+                  </div>
+
+                  <div className="space-y-5">
+                    {activeQuiz.questions.map((q, qIdx) => (
+                      <div key={q.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                        <div className="flex items-start gap-2 text-xs font-bold text-slate-900">
+                          <span className="w-5 h-5 rounded-md bg-[var(--navy)] text-white flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
+                            {qIdx + 1}
+                          </span>
+                          <span>{q.question}</span>
+                        </div>
+
+                        <div className="space-y-2 pl-7">
+                          {q.options.map((opt, optIdx) => (
+                            <label
+                              key={optIdx}
+                              onClick={() => setQuizAnswers({ ...quizAnswers, [qIdx]: optIdx })}
+                              className={`p-2.5 rounded-xl border text-xs flex items-center gap-2.5 cursor-pointer transition ${
+                                quizAnswers[qIdx] === optIdx
+                                  ? "bg-blue-100/70 border-[var(--blue)] font-bold text-slate-900"
+                                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`question-${qIdx}`}
+                                checked={quizAnswers[qIdx] === optIdx}
+                                onChange={() => {}}
+                                className="text-[var(--blue)] focus:ring-[var(--blue)]"
+                              />
+                              <span>{opt}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => setActiveQuiz(null)}
+                      className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSubmitQuiz}
+                      disabled={Object.keys(quizAnswers).length < activeQuiz.questions.length}
+                      className={`px-6 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition ${
+                        Object.keys(quizAnswers).length >= activeQuiz.questions.length
+                          ? "bg-[var(--blue)] hover:bg-blue-600 cursor-pointer"
+                          : "bg-slate-300 cursor-not-allowed"
+                      }`}
+                    >
+                      Submit & Verify Skill →
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center space-y-4 py-4 animate-in fade-in duration-200">
+                  <div className="text-5xl">{quizResult.passed ? "🏅" : "📚"}</div>
+                  <h4 className="text-xl font-extrabold text-slate-900">
+                    {quizResult.passed
+                      ? `Score: ${quizResult.score}/${quizResult.total} — Verified!`
+                      : `Score: ${quizResult.score}/${quizResult.total} — Keep Learning`}
+                  </h4>
+                  <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+                    {quizResult.passed
+                      ? `You passed the assessment for ${activeQuiz.skillName}. Your profile has been updated with the Verified Skill Badge, improving your match scores with hiring managers.`
+                      : `You needed ${activeQuiz.passingScore} correct answers. Review the concepts and retake the quiz anytime.`}
+                  </p>
+
+                  <div className="pt-4">
+                    <button
+                      onClick={() => {
+                        setActiveQuiz(null);
+                        setQuizResult(null);
+                      }}
+                      className="px-6 py-2.5 bg-[var(--navy)] text-white font-bold text-xs rounded-xl shadow-md"
+                    >
+                      Done & View Profile
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 2: TRANSPARENT JOB OFFER & COMPENSATION BREAKDOWN */}
+        {activeOffer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    {activeOffer.status === "accepted" ? "Offer Accepted & Signed ✓" : "Official Employment Offer"}
+                  </span>
+                  <h3 className="text-2xl font-black text-slate-900 mt-2">
+                    {activeOffer.jobTitle}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    {activeOffer.companyName} • {activeOffer.location}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveOffer(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold flex items-center justify-center text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Total CTC Banner */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-900 to-[#102A43] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--mint)]">
+                    Total Annual CTC (Cost to Company)
+                  </span>
+                  <div className="text-3xl font-black">
+                    ₹{activeOffer.totalAnnualCTC.toLocaleString("en-IN")} <span className="text-xs font-normal text-slate-300">/ year</span>
+                  </div>
+                </div>
+                <div className="text-left sm:text-right">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-300">
+                    Est. Monthly In-Hand
+                  </span>
+                  <div className="text-xl font-bold text-emerald-300">
+                    ~₹{activeOffer.estMonthlyTakeHome.toLocaleString("en-IN")} <span className="text-xs font-normal text-slate-300">/ mo</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Compensation Breakdown Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Base Salary</span>
+                  <div className="text-sm font-black text-slate-900">
+                    ₹{activeOffer.baseSalaryINR.toLocaleString("en-IN")}
+                  </div>
+                  <span className="text-[9px] text-slate-400">Fixed Monthly Component</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Variable Bonus</span>
+                  <div className="text-sm font-black text-indigo-700">
+                    ₹{activeOffer.variableBonusINR.toLocaleString("en-IN")}
+                  </div>
+                  <span className="text-[9px] text-slate-400">Performance Linked</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">ESOP Grants</span>
+                  <div className="text-sm font-black text-purple-700">
+                    ₹{activeOffer.esopsValueINR.toLocaleString("en-IN")}
+                  </div>
+                  <span className="text-[9px] text-slate-400">4-Year Vesting Schedule</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Retirals</span>
+                  <div className="text-sm font-black text-slate-700">
+                    ₹{activeOffer.retiralsINR.toLocaleString("en-IN")}
+                  </div>
+                  <span className="text-[9px] text-slate-400">EPF &amp; Gratuity</span>
+                </div>
+              </div>
+
+              {/* Benefits & Dates */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
+                  Verified Benefits &amp; Work Perks
+                </h4>
+                <div className="space-y-1.5">
+                  {activeOffer.benefits.map((b, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs text-slate-700">
+                      <span className="text-emerald-500 font-bold">✓</span>
+                      <span>{b}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="border-t border-slate-100 pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-500">
+                  Joining Date: <strong>{activeOffer.joiningDate}</strong> • Valid until: {activeOffer.validUntil}
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  {activeOffer.status === "accepted" ? (
+                    <div className="px-5 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-xl shadow flex items-center gap-1.5">
+                      <span>✓</span> Offer Accepted
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleAcceptOffer(activeOffer.applicationId)}
+                      className="flex-1 sm:flex-none px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition"
+                    >
+                      🎉 Sign &amp; Accept Offer
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      showToast("Your discussion request was sent to HR.");
+                      setActiveOffer(null);
+                    }}
+                    className="px-4 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold text-xs rounded-xl"
+                  >
+                    Discuss with HR
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
