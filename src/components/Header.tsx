@@ -14,6 +14,7 @@ import { AppNotification } from "@/types/notification";
 const navLinks = [
   { label: "Home", href: "/" },
   { label: "Find Jobs", href: "/jobs" },
+  { label: "Roadmap", href: "/roadmap" },
   { label: "Salaries", href: "/salaries" },
   { label: "AI Practice", href: "/practice" },
   { label: "Interview Hub", href: "/interviews" },

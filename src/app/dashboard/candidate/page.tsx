@@ -1362,6 +1362,15 @@ export default function CandidateDashboardPage() {
                     </div>
 
                     <div className="flex items-center justify-end gap-3 pt-2">
+                      {job.match.score < 85 && (
+                        <Link
+                          href="/roadmap"
+                          className="py-2 px-3.5 rounded-xl font-bold text-xs bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 transition flex items-center gap-1.5"
+                        >
+                          <span>🗺️</span> 14-Day Bridge Plan
+                        </Link>
+                      )}
+
                       {isApplied ? (
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">
