@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+/* ─── SBJFP Design Tokens ──────────────────────────────────────── */
+:root {
+  /* Brand colours */
+  --navy: #102a43;
+  --blue: #1479c9;
+  --mint: #42d6a4;
+  --white: #ffffff;
+  --bg: #f5f8fc;
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Spacing scale */
+  --section-y: clamp(4rem, 8vw, 7rem);
+
+  /* Shadows */
+  --shadow-card: 0 1px 4px rgb(16 42 67 / 0.08), 0 4px 16px rgb(16 42 67 / 0.06);
+  --shadow-card-hover: 0 4px 12px rgb(16 42 67 / 0.12), 0 8px 32px rgb(16 42 67 / 0.1);
+}
+
+/* ─── Base ─────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--navy);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Focus visible (keyboard accessibility) ───────────────────── */
+:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ─── Skip-to-content link ─────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  background: var(--navy);
+  color: var(--white);
+  padding: 0.5rem 1rem;
+  border-radius: 0 0 6px 6px;
+  font-weight: 600;
+  z-index: 9999;
+  transition: top 0.15s;
+}
+.skip-link:focus {
+  top: 0;
+}
+
+/* ─── Smooth card hover ────────────────────────────────────────── */
+.card {
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+
+/* ─── Match score bar animation ────────────────────────────────── */
+@keyframes grow-bar {
+  from { width: 0; }
+  to { width: var(--bar-width, 85%); }
+}
+.match-bar {
+  animation: grow-bar 1.2s ease-out forwards;
+  animation-delay: 0.4s;
+  width: 0;
+}
+
+/* ─── Scroll fade-in (JS adds .visible class) ──────────────────── */
+.fade-up {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.fade-up.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
