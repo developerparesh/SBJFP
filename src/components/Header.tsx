@@ -14,9 +14,10 @@ import { AppNotification } from "@/types/notification";
 const navLinks = [
   { label: "Home", href: "/" },
   { label: "Find Jobs", href: "/jobs" },
+  { label: "Salaries", href: "/salaries" },
+  { label: "AI Practice", href: "/practice" },
   { label: "Interview Hub", href: "/interviews" },
-  { label: "For Employers", href: "/#for-employers" },
-  { label: "How It Works", href: "/#how-it-works" },
+  { label: "Messages", href: "/messages" },
 ];
 
 export default function Header() {
