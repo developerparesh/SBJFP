@@ -11,6 +11,7 @@ export interface UserProfile {
   email: string;
   fullName: string;
   role: UserRole;
+  companyName?: string | null;
 }
 
 interface AuthContextType {
@@ -45,6 +46,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       email: currentUser.email || "",
       fullName: meta.full_name || meta.name || currentUser.email?.split("@")[0] || "User",
       role: (meta.role as UserRole) || "candidate",
+      companyName: meta.company_name || null,
     };
   };
 
